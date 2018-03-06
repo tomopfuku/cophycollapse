@@ -245,6 +245,7 @@ func fossilPlacementUpdate(ll, lp float64, fnodes, nodes []*Node, tree *Node, ch
 	return lp, ll
 }
 
+// here is a test
 func singleBranchLengthUpdate(ll, lp float64, nodes, inNodes []*Node, tree *Node, chain *MCMC, branchPrior *BranchLengthPrior, treeLL *LL, epsilon float64) (float64, float64) {
 	updateNode := RandomNode(nodes)
 	soldL := updateNode.LEN
