@@ -5,6 +5,8 @@ type LL struct {
 	MULTI       bool
 	WORKERS     int
 	SITEWEIGHTS []float64
+	CUR         float64
+	LAST        float64
 }
 
 //Calc will calculate the log-likelihood

@@ -33,6 +33,7 @@ func main() {
 	runNameArg := flag.String("o", "cophymaru", "specify the prefix for outfile names")
 	threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
 	workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
+	algArg := flag.String("f", "0", "indicate which MCMC algorithm to perform:\n0:\tfossil placement\n1:\tsingle partition branch length estimation\n")
 	//blMeanArg := flag.Float64("beta", 1.0, "mean branch length for exponential prior or tree length for Dirichlet prior")
 	flag.Parse()
 	f, err := os.Create("profile")
@@ -48,39 +49,43 @@ func main() {
 	traits, ntax, ntraits := cophymaru.ReadContinuous(*traitArg)
 	fmt.Println("SUCCESSFULLY READ IN ALIGNMENT CONTAINING ", ntax, "TAXA")
 	cophymaru.MapContinuous(tree, traits, ntraits)
-	/*/ test random vs reference tree LL comparison
-	randTree := cophymaru.RandomUnrootedTree(tree)
-	cophymaru.IterateBMLengths(tree, *iterArg)
-	cophymaru.IterateBMLengths(randTree, *iterArg)
-	l1 := cophymaru.MissingUnrootedLogLike(randTree, true)
-	l2 := cophymaru.MissingUnrootedLogLike(tree, true)
-	fmt.Println(randTree.Newick(true))
-	fmt.Println(l1, l2)
-	os.Exit(0)
-	*/
-	cophymaru.IterateBMLengths(tree, *iterArg)
+	//cophymaru.IterateBMLengths(tree, *iterArg)
+
 	var weights []float64
-	if *weightLLArg != "flat" {
-		fmt.Println("Calibrating weights to filter for concordant sites...")
-		weights = cophymaru.CalibrateSiteWeights(tree, *weightLLArg)
-		fmt.Println("Generating starting tree with weights:", weights)
-	} else {
-		for i := 0; i < ntraits; i++ {
-			weights = append(weights, 1.0)
-		}
-	}
 	var fosSlice []string // read in fossil names from command line
-	for _, i := range strings.Split(*fosArg, ",") {
-		fosSlice = append(fosSlice, i)
-	}
-	if *startArg == "0" {
-		starttr, startll := cophymaru.InsertFossilTaxa(tree, traits, fosSlice, *iterArg, *missingArg, weights)
-		fmt.Println("STARTING ML TREE:\n", starttr, "\n\nSTARTING MCMC WITH LOG-LIKELIHOOD ", startll)
-		//fmt.Println(STARTING MCMC WITH LOG-LIKELIHOOD ", startll)
-	} else if *startArg == "1" {
+	if *algArg == "0" {
+		cophymaru.MissingTraitsEM(tree, *iterArg)
+		if *weightLLArg != "flat" {
+			fmt.Println("Calibrating weights to filter for concordant sites...")
+			weights = cophymaru.CalibrateSiteWeights(tree, *weightLLArg)
+			fmt.Println("Generating starting tree with weights:", weights)
+		} else {
+			for i := 0; i < ntraits; i++ {
+				weights = append(weights, 1.0)
+			}
+		}
+		for _, i := range strings.Split(*fosArg, ",") {
+			fosSlice = append(fosSlice, i)
+		}
+		if *startArg == "0" {
+			starttr, startll := cophymaru.InsertFossilTaxa(tree, traits, fosSlice, *iterArg, *missingArg, weights)
+			fmt.Println("STARTING ML TREE:\n", starttr, "\n\nSTARTING MCMC WITH LOG-LIKELIHOOD ", startll)
+			//fmt.Println(STARTING MCMC WITH LOG-LIKELIHOOD ", startll)
+		} else if *startArg == "1" {
+			cophymaru.MakeRandomStartingBranchLengths(tree)
+			cophymaru.InsertFossilTaxaRandom(tree, traits, fosSlice, *iterArg, *missingArg)
+			fmt.Println("\n\nINITIATING MCMC WITH RANDOM STARTING TREE") //", tree.Newick(true))
+		}
+	} else if *algArg == "1" {
+		if *fosArg != "" {
+			fmt.Println("cannot specify fossil tips when estimating branch lengths on a fixed tree!")
+			os.Exit(0)
+		}
+		for i := 0; i < ntraits; i++ {
+			weights = append(weights, 1.0) //use flat weights
+		}
 		cophymaru.MakeRandomStartingBranchLengths(tree)
-		cophymaru.InsertFossilTaxaRandom(tree, traits, fosSlice, *iterArg, *missingArg)
-		fmt.Println("\n\nINITIATING MCMC WITH RANDOM STARTING TREE") //", tree.Newick(true))
+		cophymaru.IterateBMLengths(tree, *iterArg)
 	}
 	//l1 := cophymaru.CalcUnrootedLogLike(tree, true)
 	//l2 := cophymaru.WeightedUnrootedLogLike(tree, true, weights)
@@ -100,9 +105,9 @@ func main() {
 		fmt.Println("Please pick a valid number of cores to use for the run.")
 		os.Exit(0)
 	}
-	chain := cophymaru.InitMCMC(*genArg, treeOutFile, logOutFile, *brPrior, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, mult, weights)
+	chain := cophymaru.InitMCMC(*genArg, treeOutFile, logOutFile, *brPrior, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, mult, weights, tree, fosSlice, *algArg)
 	start := time.Now()
-	chain.Run(tree, fosSlice)
+	chain.Run()
 	elapsed := time.Since(start)
 	fmt.Println("COMPLETED ", *genArg, "MCMC SIMULATIONS IN ", elapsed)
 }

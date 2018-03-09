@@ -214,38 +214,6 @@ func SitewiseLogLike(tree *Node) (sitelikes []float64) {
 	return
 }
 
-/*/WeightedUnrootedLogLike will calculate the log-likelihood of an unrooted tree, while assuming that no sites have missing data.
-func WeightedUnrootedLogLike(tree *Node, startFresh bool, weights []float64) (chll float64) {
-	chll = 0.0
-	for _, ch := range tree.CHLD {
-		n := ch.PostorderArray()
-		for i := range ch.CONTRT {
-			curlike := calcRootedSiteLL(n, startFresh, i)
-			chll += curlike
-		}
-	}
-	sitelikes := 0.0
-	var tmpll float64
-	var contrast, curVar float64
-	for i := range tree.CHLD[0].CONTRT {
-		tmpll = 0.
-		if tree.CHLD[0].MIS[i] == false && tree.CHLD[1].MIS[i] == false && tree.CHLD[2].MIS[i] == false { //do the standard calculation when no subtrees have missing traits
-			contrast = tree.CHLD[0].CONTRT[i] - tree.CHLD[1].CONTRT[i]
-			curVar = tree.CHLD[0].PRNLEN + tree.CHLD[1].PRNLEN
-			tmpll = ((-0.5) * ((math.Log(2. * math.Pi)) + (math.Log(curVar)) + (math.Pow(contrast, 2.) / (curVar))))
-			tmpPRNLEN := ((tree.CHLD[0].PRNLEN * tree.CHLD[1].PRNLEN) / (tree.CHLD[0].PRNLEN + tree.CHLD[1].PRNLEN))
-			tmpChar := ((tree.CHLD[0].PRNLEN * tree.CHLD[1].CONTRT[i]) + (tree.CHLD[1].PRNLEN * tree.CHLD[0].CONTRT[i])) / curVar
-			contrast = tmpChar - tree.CHLD[2].CONTRT[i]
-			curVar = tree.CHLD[2].PRNLEN + tmpPRNLEN
-			tmpll += ((-0.5) * ((math.Log(2. * math.Pi)) + (math.Log(curVar)) + (math.Pow(contrast, 2.) / (curVar))))
-		}
-		sitelikes += tmpll * weights[i]
-	}
-	chll += sitelikes
-	return
-}
-*/
-
 //MarkAll will mark all of the nodes in a tree ARRAY
 func MarkAll(nodes []*Node) {
 	for _, n := range nodes {
@@ -324,12 +292,16 @@ func calcRootedSiteLLParallel(n *Node, nlikes *float64, startFresh bool, site in
 func siteTreeLikeParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, weights []float64, jobs <-chan int, results chan<- float64) {
 	for site := range jobs {
 		tmpll := 0.
-		calcRootedSiteLLParallel(ch1, &tmpll, startFresh, site)
-		calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
-		calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
-		tmpll += calcUnrootedSiteLLParallel(tree, site)
-		tmpll = tmpll * weights[site]
-		results <- tmpll
+		if weights[site] != 0. {
+			calcRootedSiteLLParallel(ch1, &tmpll, startFresh, site)
+			calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
+			calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
+			tmpll += calcUnrootedSiteLLParallel(tree, site)
+			tmpll = tmpll * weights[site]
+			results <- tmpll
+		} else {
+			results <- tmpll
+		}
 	}
 }
 

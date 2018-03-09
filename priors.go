@@ -15,6 +15,8 @@ type BranchLengthPrior struct {
 	NTIPS  int
 	SGAMMA float64
 	SFACT  float64
+	CUR    float64
+	LAST   float64
 }
 
 //Calc will return the log prior probability of the branch length prior
