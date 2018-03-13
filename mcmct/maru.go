@@ -33,7 +33,8 @@ func main() {
 	runNameArg := flag.String("o", "cophymaru", "specify the prefix for outfile names")
 	threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
 	workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
-	algArg := flag.String("f", "0", "indicate which MCMC algorithm to perform:\n0:\tfossil placement\n1:\tsingle partition branch length estimation\n")
+	algArg := flag.String("f", "0", "indicate which MCMC algorithm to perform:\n0:\tfossil placement\n1:\tsingle partition branch length estimation\n2\tcluster traits by branch length variance\n")
+	clustArg := flag.Float64("a", 1.0, "clumpiness parameter for trait clustering algorithm")
 	//blMeanArg := flag.Float64("beta", 1.0, "mean branch length for exponential prior or tree length for Dirichlet prior")
 	flag.Parse()
 	f, err := os.Create("profile")
@@ -86,6 +87,9 @@ func main() {
 		}
 		cophymaru.MakeRandomStartingBranchLengths(tree)
 		cophymaru.IterateBMLengths(tree, *iterArg)
+	} else if *algArg == "2" {
+		cophymaru.MakeRandomStartingBranchLengths(tree)
+
 	}
 	//l1 := cophymaru.CalcUnrootedLogLike(tree, true)
 	//l2 := cophymaru.WeightedUnrootedLogLike(tree, true, weights)
@@ -106,6 +110,14 @@ func main() {
 		os.Exit(0)
 	}
 	chain := cophymaru.InitMCMC(*genArg, treeOutFile, logOutFile, *brPrior, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, mult, weights, tree, fosSlice, *algArg)
+	if *algArg == "2" { // need to perform some extra steps when using the clustering algorithm
+		c := cophymaru.InitializeClusters(tree)
+		chain.NSITES = float64(ntraits)
+		chain.CLUS = c
+		chain.ALPHA = *clustArg
+		denom := chain.NSITES - 1 + chain.ALPHA
+		chain.ALPHAPROB = (chain.ALPHA / 2.) / denom
+	}
 	start := time.Now()
 	chain.Run()
 	elapsed := time.Since(start)

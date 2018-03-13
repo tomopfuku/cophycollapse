@@ -75,13 +75,8 @@ func AssertUnrootedTree(tree *Node) {
 //IterateBMLengths will iteratively calculate the ML branch lengths for a particular topology, assuming that traits are fully sampled at the tips. should use MissingTraitsEM if there are missing sites.
 func IterateBMLengths(tree *Node, niter int) {
 	AssertUnrootedTree(tree)
-	itercnt := 0
-	for {
+	for i := 0; i <= niter; i++ {
 		calcBMLengths(tree)
-		itercnt++
-		if itercnt == niter {
-			break
-		}
 	}
 }
 
@@ -90,14 +85,9 @@ func MissingTraitsEM(tree *Node, niter int) {
 	AssertUnrootedTree(tree)
 	nodes := tree.PreorderArray()
 	InitMissingValues(nodes)
-	itercnt := 0
-	for {
+	for i := 0; i <= niter; i++ {
 		CalcExpectedTraits(tree) //calculate Expected trait values
 		calcBMLengths(tree)      //maximize likelihood of branch lengths
-		itercnt++
-		if itercnt == niter {
-			break
-		}
 	}
 }
 
@@ -303,6 +293,25 @@ func siteTreeLikeParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, weights []
 			results <- tmpll
 		}
 	}
+}
+
+//SingleSiteLikeCluster will calculate the log-likelihood of a single site under the branch lengths specified by the current cluster
+func SingleSiteLikeCluster(chain *MCMC, site, cluster int) (sitelike float64) {
+	//nsites := len(tree.CHLD[0].CONTRT)
+	tree := chain.TREE
+	for _, n := range chain.NODES {
+		n.LEN = n.ClustLEN[cluster]
+	}
+	ch1 := tree.CHLD[0] //.PostorderArray()
+	ch2 := tree.CHLD[1] //.PostorderArray()
+	ch3 := tree.CHLD[2] //.PostorderArray()
+	tmpll := 0.
+	calcRootedSiteLLParallel(ch1, &tmpll, true, site)
+	calcRootedSiteLLParallel(ch2, &tmpll, true, site)
+	calcRootedSiteLLParallel(ch3, &tmpll, true, site)
+	tmpll += calcUnrootedSiteLLParallel(tree, site)
+	sitelike = tmpll
+	return
 }
 
 //WeightedUnrootedLogLikeParallel will calculate the log-likelihood of an unrooted tree, while assuming that some sites have missing data. This can be used to calculate the likelihoods of trees that have complete trait sampling, but it will be slower than CalcRootedLogLike.

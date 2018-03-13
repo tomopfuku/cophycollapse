@@ -105,6 +105,7 @@ func InitMCMC(gen int, treeOut, logOut string, branchPrior string, printFreq, wr
 	chain.TREELL = InitLL(chain.MULTI, chain.WORKERS, chain.SITEWEIGHTS)
 	chain.STEPLEN = 0.1
 	chain.ALG = alg
+	chain.NSITES = float64(nsites)
 	return
 }
 
@@ -127,6 +128,10 @@ type MCMC struct {
 	TREE        *Node
 	STEPLEN     float64
 	ALG         string
+	CLUS        []int
+	NSITES      float64
+	ALPHA       float64
+	ALPHAPROB   float64
 }
 
 //Run will run Markov Chain Monte Carlo simulations, adjusting branch lengths and fossil placements
@@ -226,6 +231,106 @@ func adjustBranchLengthStepLength(epsilon, acceptanceRatio float64) (epsilonStar
 	s := math.Pi / 2.
 	epsilonStar = epsilon * (math.Tan(s*acceptanceRatio) / math.Tan(s*acceptanceRatioStar))
 	return
+}
+
+func (chain *MCMC) gibbsClusterUpdate() {
+	for i := range chain.CLUS {
+		chain.siteClusterUpdate(i)
+	}
+	//TODO: need to write function to discard any empty clusters
+}
+
+//this will update the cluster assignment of a single specified site
+func (chain *MCMC) siteClusterUpdate(curSite int) {
+	catMinusI := make(map[int][]int)
+	alone := false
+	for i, c := range chain.CLUS {
+		if i != curSite {
+			if _, ok := catMinusI[c]; ok {
+				catMinusI[c] = append(catMinusI[c], i)
+			} else {
+				var curfill []int
+				curfill = append(curfill, i)
+				catMinusI[c] = curfill
+			}
+		}
+	}
+	curSiteCluster := chain.CLUS[curSite]
+	if _, ok := catMinusI[curSiteCluster]; !ok {
+		alone = true
+	}
+	var clusterProbs map[int]float64
+	if alone == false { // if curSite belongs to a cluster shared with other data
+		aux := -2
+		chain.drawAuxBL(aux)
+		clusterProbs = chain.clusterAssignmentProbs(catMinusI, curSite, aux)
+	} else { //treat curSiteCluster as an auxilliary class if curSite occupies its own cluster
+		aux := -1
+		chain.drawAuxBL(aux)
+		clusterProbs = chain.clusterAssignmentProbs(catMinusI, curSite, aux)
+	}
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
+	r := r1.Float64()
+	cumprob := 0.
+	var newcluster int
+	for k := range clusterProbs {
+		cumprob += clusterProbs[k]
+		if cumprob > r {
+			newcluster = k
+		}
+	}
+	if newcluster < 0 { // create a new cluster K+1 if curSite was assigned to one of the aux classes
+		newlens := chain.TREE.ClustLEN[newcluster]
+		newcluster = Max(catMinusI) + 1
+		chain.TREE.ClustLEN[newcluster] = newlens
+	}
+	chain.CLUS[curSite] = newcluster
+}
+
+func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob map[int]float64) {
+	prob = make(map[int]float64)
+	var rat float64
+	ratsum := 0.
+	denom := chain.NSITES - 1 + chain.ALPHA
+	for k := range cat { // calculate assignment probs for all assigned categories
+		rat = float64(len(cat[k])) / denom
+		siteLL := SingleSiteLikeCluster(chain, cur, k)
+		rat = rat * siteLL
+		prob[k] = rat
+		ratsum += rat
+	}
+	//now need to calculate the probabilites for reassigning to an auxilliary category
+	rat = chain.ALPHAPROB
+	var siteLL float64
+	curSiteCluster := chain.CLUS[cur]
+	if aux == -1 { // treat curSiteCluster as one of the auxiliary clusters if curSite has its own cluster (is alone)
+		siteLL = SingleSiteLikeCluster(chain, cur, curSiteCluster)
+		rat = rat * siteLL
+		prob[curSiteCluster] = rat
+		ratsum += rat
+	}
+	for k := -1; k <= aux; k-- {
+		siteLL = SingleSiteLikeCluster(chain, cur, k)
+		rat = rat * siteLL
+		prob[k] = rat
+		ratsum += rat
+	}
+	for k := range prob {
+		prob[k] = prob[k] / ratsum
+	}
+	return
+}
+
+func (chain *MCMC) drawAuxBL(aux int) {
+	for _, n := range chain.NODES {
+		for i := -1; i <= aux; i-- {
+			s1 := rand.NewSource(time.Now().UnixNano())
+			r1 := rand.New(s1)
+			u := r1.Float64()
+			n.ClustLEN[i] = u //ClustLEN is a map, not list
+		}
+	}
 }
 
 //this move prunes and regrafts a fossil, creating random variables for the altered branch lengths
