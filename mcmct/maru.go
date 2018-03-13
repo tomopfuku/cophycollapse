@@ -111,9 +111,9 @@ func main() {
 	}
 	chain := cophymaru.InitMCMC(*genArg, treeOutFile, logOutFile, *brPrior, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, mult, weights, tree, fosSlice, *algArg)
 	if *algArg == "2" { // need to perform some extra steps when using the clustering algorithm
-		c := cophymaru.InitializeClusters(tree)
+		cophymaru.InitializeClusters(chain)
 		chain.NSITES = float64(ntraits)
-		chain.CLUS = c
+		//chain.CLUS = c
 		chain.ALPHA = *clustArg
 		denom := chain.NSITES - 1 + chain.ALPHA
 		chain.ALPHAPROB = (chain.ALPHA / 2.) / denom

@@ -9,6 +9,11 @@ type LL struct {
 	LAST        float64
 }
 
+//CalcCluster will calculate the log-likelihood of a single cluster
+func (ll *LL) CalcCluster(chain *MCMC, startFresh bool, cluster int) float64 {
+	return ClusterLogLike(chain, cluster, startFresh, ll.WORKERS)
+}
+
 //Calc will calculate the log-likelihood
 func (ll *LL) Calc(tree *Node, startFresh bool) float64 {
 	if ll.MULTI == true {

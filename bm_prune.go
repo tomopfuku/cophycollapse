@@ -314,6 +314,47 @@ func SingleSiteLikeCluster(chain *MCMC, site, cluster int) (sitelike float64) {
 	return
 }
 
+func siteTreeLikeClusterParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, cluster int, chain *MCMC, jobs <-chan int, results chan<- float64) {
+	for site := range jobs {
+		if chain.CLUS[site] != cluster {
+			continue
+		}
+		tmpll := 0.
+		calcRootedSiteLLParallel(ch1, &tmpll, startFresh, site)
+		calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
+		calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
+		tmpll += calcUnrootedSiteLLParallel(tree, site)
+		results <- tmpll
+	}
+}
+
+//ClusterLogLike will calculate the likelihood of all of the sites in a cluster under their corresponding branch lengths
+func ClusterLogLike(chain *MCMC, cluster int, startFresh bool, workers int) (sitelikes float64) {
+	tree := chain.TREE
+	//for _, n := range chain.NODES {
+	//	n.LEN = n.ClustLEN[cluster]
+	//}
+	nsites := len(tree.CHLD[0].CONTRT)
+	ch1 := tree.CHLD[0] //.PostorderArray()
+	ch2 := tree.CHLD[1] //.PostorderArray()
+	ch3 := tree.CHLD[2] //.PostorderArray()
+	jobs := make(chan int, nsites)
+	results := make(chan float64, nsites)
+	for w := 0; w < workers; w++ {
+		go siteTreeLikeClusterParallel(tree, ch1, ch2, ch3, startFresh, cluster, chain, jobs, results)
+	}
+
+	for site := 0; site < nsites; site++ {
+		jobs <- site
+	}
+	close(jobs)
+
+	for site := 0; site < nsites; site++ {
+		sitelikes += <-results
+	}
+	return
+}
+
 //WeightedUnrootedLogLikeParallel will calculate the log-likelihood of an unrooted tree, while assuming that some sites have missing data. This can be used to calculate the likelihoods of trees that have complete trait sampling, but it will be slower than CalcRootedLogLike.
 func WeightedUnrootedLogLikeParallel(tree *Node, startFresh bool, weights []float64, workers int) (sitelikes float64) {
 	nsites := len(tree.CHLD[0].CONTRT)

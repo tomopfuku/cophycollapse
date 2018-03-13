@@ -105,7 +105,6 @@ func InitMCMC(gen int, treeOut, logOut string, branchPrior string, printFreq, wr
 	chain.TREELL = InitLL(chain.MULTI, chain.WORKERS, chain.SITEWEIGHTS)
 	chain.STEPLEN = 0.1
 	chain.ALG = alg
-	chain.NSITES = float64(nsites)
 	return
 }
 
@@ -128,10 +127,12 @@ type MCMC struct {
 	TREE        *Node
 	STEPLEN     float64
 	ALG         string
-	CLUS        []int
+	CLUS        []int // stores the current allocation of clusters for each site.
 	NSITES      float64
 	ALPHA       float64
 	ALPHAPROB   float64
+	CLUSTERSET  map[int][]int // stores the single set of clusters and their assignments
+	UNIQUEK     []int
 }
 
 //Run will run Markov Chain Monte Carlo simulations, adjusting branch lengths and fossil placements
@@ -216,10 +217,22 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 		s1 := rand.NewSource(time.Now().UnixNano())
 		r1 := rand.New(s1)
 		r := r1.Float64()
-		if r < 0.95 { // apply single branch length update 95% of the time
+		if r < 0.99 { // apply single branch length update 95% of the time
 			chain.singleBranchLengthUpdate()
-		} else if r > 0.95 {
+		} else {
 			chain.cladeBranchLengthUpdate()
+		}
+		if chain.TREELL.CUR != chain.TREELL.LAST {
+			*acceptanceCount += 1.0
+		}
+	} else if chain.ALG == "2" {
+		s1 := rand.NewSource(time.Now().UnixNano())
+		r1 := rand.New(s1)
+		r := r1.Float64()
+		if r < 0.98 { // apply single branch length update 95% of the time
+			chain.singleBranchLengthUpdateCluster()
+		} else {
+			chain.gibbsClusterUpdate()
 		}
 		if chain.TREELL.CUR != chain.TREELL.LAST {
 			*acceptanceCount += 1.0
@@ -237,27 +250,24 @@ func (chain *MCMC) gibbsClusterUpdate() {
 	for i := range chain.CLUS {
 		chain.siteClusterUpdate(i)
 	}
-	//TODO: need to write function to discard any empty clusters
 }
 
 //this will update the cluster assignment of a single specified site
 func (chain *MCMC) siteClusterUpdate(curSite int) {
-	catMinusI := make(map[int][]int)
+	catMinusI := chain.CLUSTERSET //make(map[int][]int)
 	alone := false
-	for i, c := range chain.CLUS {
-		if i != curSite {
-			if _, ok := catMinusI[c]; ok {
-				catMinusI[c] = append(catMinusI[c], i)
-			} else {
-				var curfill []int
-				curfill = append(curfill, i)
-				catMinusI[c] = curfill
+	curSiteCluster := chain.CLUS[curSite]
+	if len(catMinusI[curSiteCluster]) == 1 {
+		delete(catMinusI, curSiteCluster)
+		alone = true
+	} else {
+		var newsites []int
+		for _, c := range catMinusI[curSiteCluster] {
+			if c != curSite {
+				newsites = append(newsites, c)
 			}
 		}
-	}
-	curSiteCluster := chain.CLUS[curSite]
-	if _, ok := catMinusI[curSiteCluster]; !ok {
-		alone = true
+		catMinusI[curSiteCluster] = newsites
 	}
 	var clusterProbs map[int]float64
 	if alone == false { // if curSite belongs to a cluster shared with other data
@@ -285,9 +295,44 @@ func (chain *MCMC) siteClusterUpdate(curSite int) {
 		newcluster = Max(catMinusI) + 1
 		chain.TREE.ClustLEN[newcluster] = newlens
 	}
-	chain.CLUS[curSite] = newcluster
+	//chain.CLUS[curSite] = newcluster
+	if newcluster != curSiteCluster {
+		chain.updateAssignmentVector(curSite, newcluster)
+		if alone == true {
+			for _, n := range chain.NODES {
+				delete(n.ClustLEN, curSiteCluster) // delete any clusters that are empty
+			}
+			delete(chain.CLUSTERSET, curSiteCluster)
+			chain.updateUniqueK(curSiteCluster)
+		} else {
+			chain.CLUSTERSET[curSiteCluster] = catMinusI[curSiteCluster]
+		}
+	}
 }
 
+func (chain *MCMC) updateUniqueK(del int) {
+	var new []int
+	for _, c := range chain.UNIQUEK {
+		if c != del {
+			new = append(new, c)
+		}
+	}
+	chain.UNIQUEK = new
+}
+
+func (chain *MCMC) updateAssignmentVector(curSite, newcluster int) {
+	var newAssignmentVector []int
+	for i, c := range chain.CLUS {
+		if i != curSite {
+			newAssignmentVector = append(newAssignmentVector, c)
+		} else {
+			newAssignmentVector = append(newAssignmentVector, newcluster)
+		}
+	}
+	chain.CLUS = newAssignmentVector
+}
+
+//this could be sped up if i kept track of both the current and last cluster assignments for each site and reused the likelihood calc for sites that haven't changed clusters
 func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob map[int]float64) {
 	prob = make(map[int]float64)
 	var rat float64
@@ -330,6 +375,33 @@ func (chain *MCMC) drawAuxBL(aux int) {
 			u := r1.Float64()
 			n.ClustLEN[i] = u //ClustLEN is a map, not list
 		}
+	}
+}
+
+func (chain *MCMC) singleBranchLengthUpdateCluster() {
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
+	cluster := chain.UNIQUEK[r1.Intn(len(chain.UNIQUEK))]
+	for _, n := range chain.NODES {
+		n.LEN = n.ClustLEN[cluster]
+	}
+	updateNode := RandomNode(chain.NODES)
+	soldL := updateNode.LEN
+	var propRat float64
+	updateNode.LEN, propRat = singleBrlenMultiplierProp(updateNode.LEN, chain.STEPLEN)
+	llstar := chain.TREELL.CalcCluster(chain, true, cluster)
+	lpstar := chain.BRANCHPRIOR.Calc(chain.NODES)
+	alpha := math.Exp(lpstar-chain.BRANCHPRIOR.CUR) * math.Exp(llstar-chain.TREELL.CUR) * propRat
+	//fmt.Println(llstar, ll, llstar-ll)
+	s1 = rand.NewSource(time.Now().UnixNano())
+	r1 = rand.New(s1)
+	r := r1.Float64()
+	if r < alpha {
+		//TODO: need to add attribute for cluster-specific acceptance probs in LL struct
+		chain.TREELL.CUR = llstar
+		chain.BRANCHPRIOR.CUR = lpstar
+	} else {
+		updateNode.LEN = soldL
 	}
 }
 
