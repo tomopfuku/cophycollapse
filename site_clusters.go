@@ -74,7 +74,7 @@ func StartingSiteLen(chain *MCMC) {
 	for _, n := range chain.NODES {
 		n.ClustLEN = make(map[int]float64)
 		for i := 0; i < len(chain.CLUS); i++ {
-			n.ClustLEN[i] = n.LEN //append(n.ClustLEN[i], n.LEN)
+			n.ClustLEN[i] = rand.Float64() //n.LEN //append(n.ClustLEN[i], n.LEN)
 		}
 	}
 }

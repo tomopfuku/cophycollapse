@@ -322,7 +322,7 @@ func siteTreeLikeClusterParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, clu
 			calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
 			calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
 			tmpll += calcUnrootedSiteLLParallel(tree, site)
-			fmt.Println(tmpll)
+			//fmt.Println(tmpll)
 		}
 		results <- tmpll
 	}

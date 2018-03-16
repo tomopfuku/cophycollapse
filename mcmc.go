@@ -36,17 +36,25 @@ func cladeBrlenMultiplierProp(theta []float64, epsilon float64) (thetaStar []flo
 }
 
 func singleBrlenMultiplierProp(theta float64, epsilon float64) (thetaStar, propRat float64) {
-	min := math.Log(0.001)
+	min := 0.001
+	//a := -6.907755278982137       //calculated from log(min)
+	scalea := -13.815510557964274 //calculated from 2*(log(min))
+	max := 10.
 	u := rand.Float64()
-	//epsilon := 0.2
+	epsilon = 0.5
 	c := math.Exp(((u - 0.5) * epsilon))
 	thetaStar = theta * c
 	propRat = c
-	if math.Log(thetaStar) < min { //place a lower constraint on brlen
-		thetaStar = math.Exp(2*min - math.Log(thetaStar))
-		//fmt.Println(thetaStar)
+	if thetaStar < min { //place a lower constraint on brlen
+		thetaStar = math.Exp(scalea - math.Log(thetaStar))
+		propRat = thetaStar / theta
+	} else if thetaStar > max {
+		//av := thetaStar
+		thetaStar = 100. / thetaStar
+		//fmt.Println("big", thetaStar, av, theta)
 		propRat = thetaStar / theta
 	}
+
 	return
 }
 
@@ -252,14 +260,17 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 			*acceptanceCount += 1.0
 		}
 	} else if chain.ALG == "2" {
-		if i != 10000 { //r < 0.98 { //0.99 { // apply single branch length update 95% of the time
-			cluster := chain.UNIQUEK[rand.Intn(len(chain.UNIQUEK))]
+		if i != 500000 && i != 600000 && i != 650000 && i != 700000 { //r < 0.98 { //0.99 { // apply single branch length update 95% of the time
+			updateClust := rand.Intn(len(chain.UNIQUEK))
+			//fmt.Println(chain.UNIQUEK, updateClust)
+			cluster := chain.UNIQUEK[updateClust]
 			chain.TREELL.CLUSTLAST[cluster] = chain.TREELL.CLUSTCUR[cluster]
 			chain.singleBranchLengthUpdateCluster(cluster)
 			if chain.TREELL.CLUSTCUR[cluster] != chain.TREELL.CLUSTLAST[cluster] {
 				*acceptanceCount += 1.0
 			}
 		} else {
+			//fmt.Println(chain.UNIQUEK)
 			chain.gibbsClusterUpdate()
 		}
 
@@ -302,6 +313,7 @@ func (chain *MCMC) siteClusterUpdate(curSite int, curSiteCluster int) {
 		catMinusI[curSiteCluster] = newsites
 	}
 	var clusterProbs map[int]float64
+
 	if alone == false { // if curSite belongs to a cluster shared with other data
 		aux := -2
 		chain.drawAuxBL(aux)
@@ -311,23 +323,12 @@ func (chain *MCMC) siteClusterUpdate(curSite int, curSiteCluster int) {
 		chain.drawAuxBL(aux)
 		clusterProbs = chain.clusterAssignmentProbs(catMinusI, curSite, aux)
 	}
-	//s1 := rand.NewSource(time.Now().UnixNano())
-	//r1 := rand.New(s1)
 	r := rand.Float64()
-	cumprob := 0.
-	var newcluster int
-	for k := range clusterProbs {
-		cumprob += clusterProbs[k]
-		if cumprob > r {
-			newcluster = k
-			//fmt.Println(newcluster,curSiteCluster)
-			break
-		}
-	}
+	newcluster := assignNewCluster(clusterProbs, r)
 	if newcluster < 0 { // create a new cluster K+1 if curSite was assigned to one of the aux classes
-		newlens := chain.TREE.ClustLEN[newcluster]
-		newcluster = Max(catMinusI) + 1
-		chain.TREE.ClustLEN[newcluster] = newlens
+		reassignment := Max(catMinusI) + 1
+		chain.assignNewLen(newcluster, reassignment)
+		newcluster = reassignment
 	}
 	//chain.CLUS[curSite] = newcluster
 	if newcluster != curSiteCluster {
@@ -338,12 +339,41 @@ func (chain *MCMC) siteClusterUpdate(curSite int, curSiteCluster int) {
 			}
 			delete(chain.CLUSTERSET, curSiteCluster)
 			chain.updateUniqueK(curSiteCluster)
+			chain.CLUSTERSET[newcluster] = append(chain.CLUSTERSET[newcluster], curSite)
 		} else {
 			chain.CLUSTERSET[curSiteCluster] = catMinusI[curSiteCluster]
 			chain.CLUSTERSET[newcluster] = append(chain.CLUSTERSET[newcluster], curSite)
+			//fmt.Println("HERE", chain.CLUSTERSET)
 		}
 		//os.Exit(0)
 	}
+}
+
+func (chain *MCMC) assignNewLen(curlabel, reassignment int) {
+	for _, n := range chain.NODES {
+		n.ClustLEN[reassignment] = n.ClustLEN[curlabel]
+	}
+}
+
+func assignNewCluster(clusterProbs map[int]float64, r float64) (newcluster int) {
+	cumprob := 0.
+	assigned := false
+	for k := range clusterProbs {
+		cumprob += clusterProbs[k]
+		if cumprob > r {
+			newcluster = k
+			assigned = true
+			//fmt.Println(newcluster,curSiteCluster)
+			break
+		}
+	}
+	//fmt.Println(cumprob, r, clusterProbs)
+	if assigned == false {
+		fmt.Println(clusterProbs)
+		fmt.Println("something is seriously awry")
+		os.Exit(0)
+	}
+	return
 }
 
 func (chain *MCMC) updateUniqueK(del int) {
@@ -380,6 +410,8 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 		rat = rat + math.Exp(siteLL)
 		prob[k] = rat
 		ratsum += rat
+		//fmt.Println("REAL", ratsum, siteLL, cur, k, chain.UNIQUEK)
+
 	}
 	//now need to calculate the probabilites for reassigning to an auxilliary category
 	rat = chain.ALPHAPROB
@@ -390,6 +422,8 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 		rat = rat * math.Exp(siteLL)
 		prob[curSiteCluster] = rat
 		ratsum += rat
+		//fmt.Println("NOTREAL", ratsum)
+
 	}
 	for k := -1; k >= aux; k-- {
 		siteLL = SingleSiteLikeCluster(chain, cur, k)
@@ -411,6 +445,14 @@ func (chain *MCMC) drawAuxBL(aux int) {
 			//u := 0.01
 			n.ClustLEN[i] = u //ClustLEN is a map, not list
 		}
+	}
+}
+
+//PrintClusterTrees will print out the branch lengths for each cluster in the dataset
+func (chain *MCMC) PrintClusterTrees() {
+	for _, c := range chain.UNIQUEK {
+		AssignClustLens(chain, c)
+		fmt.Println(c, chain.TREE.Newick(true))
 	}
 }
 

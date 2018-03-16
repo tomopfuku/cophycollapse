@@ -126,11 +126,12 @@ func main() {
 		chain.ALPHAPROB = (chain.ALPHA / 2.) / denom
 		//fmt.Println(cophymaru.ClusterLogLike(chain, 0, true, 4), len(chain.CLUSTERSET[0]))
 		cophymaru.StartingSiteLen(chain)
-		cophymaru.SiteBranchCalc(chain.TREE, 100)
+		//cophymaru.SiteBranchCalc(chain.TREE, 100)
 	}
 	start := time.Now()
-
+	chain.PrintClusterTrees()
 	chain.Run()
+	chain.PrintClusterTrees()
 	elapsed := time.Since(start)
 	fmt.Println("COMPLETED ", *genArg, "MCMC SIMULATIONS IN ", elapsed)
 }
