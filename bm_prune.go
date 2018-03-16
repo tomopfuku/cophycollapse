@@ -80,7 +80,7 @@ func IterateBMLengths(tree *Node, niter int) {
 	}
 }
 
-//MissingTraitsEM will iteratively calculate the ML branch lengths for a particular topology
+//MissingTraitsEM will iteratively calculate approximate ML branch lengths for a particular topology
 func MissingTraitsEM(tree *Node, niter int) {
 	AssertUnrootedTree(tree)
 	nodes := tree.PreorderArray()
@@ -316,25 +316,47 @@ func SingleSiteLikeCluster(chain *MCMC, site, cluster int) (sitelike float64) {
 
 func siteTreeLikeClusterParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, cluster int, chain *MCMC, jobs <-chan int, results chan<- float64) {
 	for site := range jobs {
-		if chain.CLUS[site] != cluster {
-			continue
-		}
 		tmpll := 0.
-		calcRootedSiteLLParallel(ch1, &tmpll, startFresh, site)
-		calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
-		calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
-		tmpll += calcUnrootedSiteLLParallel(tree, site)
+		if chain.CLUS[site] == cluster {
+			calcRootedSiteLLParallel(ch1, &tmpll, startFresh, site)
+			calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
+			calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
+			tmpll += calcUnrootedSiteLLParallel(tree, site)
+			fmt.Println(tmpll)
+		}
 		results <- tmpll
 	}
 }
 
-//ClusterLogLike will calculate the likelihood of all of the sites in a cluster under their corresponding branch lengths
-func ClusterLogLike(chain *MCMC, cluster int, startFresh bool, workers int) (sitelikes float64) {
+//ClusterLogLike will calculate the log-likelihood of a single site under the branch lengths specified by the current cluster
+func ClusterLogLike(chain *MCMC, cluster int, startFresh bool) (sitelike float64) {
+	nsites := len(chain.CLUS)
+	tree := chain.TREE
+	sitelike = 0.
+	for site := 0; site < nsites; site++ {
+		if chain.CLUS[site] == cluster {
+			ch1 := tree.CHLD[0] //.PostorderArray()
+			ch2 := tree.CHLD[1] //.PostorderArray()
+			ch3 := tree.CHLD[2] //.PostorderArray()
+			tmpll := 0.
+			calcRootedSiteLLParallel(ch1, &tmpll, true, site)
+			calcRootedSiteLLParallel(ch2, &tmpll, true, site)
+			calcRootedSiteLLParallel(ch3, &tmpll, true, site)
+			tmpll += calcUnrootedSiteLLParallel(tree, site)
+			sitelike = tmpll
+			//fmt.Println(sitelike, chain.TREE.Newick(true))
+		}
+	}
+	return
+}
+
+//ClusterLogLikeParallel will calculate the likelihood of all of the sites in a cluster under their corresponding branch lengths
+func ClusterLogLikeParallel(chain *MCMC, cluster int, startFresh bool, workers int) (sitelikes float64) {
 	tree := chain.TREE
 	//for _, n := range chain.NODES {
 	//	n.LEN = n.ClustLEN[cluster]
 	//}
-	nsites := len(tree.CHLD[0].CONTRT)
+	nsites := len(chain.CLUSTERSET[cluster])
 	ch1 := tree.CHLD[0] //.PostorderArray()
 	ch2 := tree.CHLD[1] //.PostorderArray()
 	ch3 := tree.CHLD[2] //.PostorderArray()
@@ -343,7 +365,6 @@ func ClusterLogLike(chain *MCMC, cluster int, startFresh bool, workers int) (sit
 	for w := 0; w < workers; w++ {
 		go siteTreeLikeClusterParallel(tree, ch1, ch2, ch3, startFresh, cluster, chain, jobs, results)
 	}
-
 	for site := 0; site < nsites; site++ {
 		jobs <- site
 	}
@@ -560,4 +581,112 @@ func TritomyML(tree *Node) {
 	tree.CHLD[0].LEN = sumV1
 	tree.CHLD[1].LEN = sumV2
 	tree.CHLD[2].LEN = sumV3
+}
+
+//SiteDistLen will estimate distance approximate LS/ML branch lengths for each site
+func siteDistLen(tree *Node, i int) {
+	var x1, x2, x3 float64
+	sumV1 := 0.0
+	sumV2 := 0.0
+	sumV3 := 0.0
+	x1 = tree.CHLD[0].CONTRT[i]
+	x2 = tree.CHLD[1].CONTRT[i]
+	x3 = tree.CHLD[2].CONTRT[i]
+	sumV1 += ((x1 - x2) * (x1 - x3))
+	sumV2 += ((x2 - x1) * (x2 - x3))
+	sumV3 += ((x3 - x1) * (x3 - x2))
+	if sumV1 < 0.0 {
+		sumV1 = 0.000001
+		sumV2 = 0.0
+		sumV3 = 0.0
+		x1 = tree.CHLD[0].CONTRT[i]
+		x2 = tree.CHLD[1].CONTRT[i]
+		x3 = tree.CHLD[2].CONTRT[i]
+		sumV2 += (x1 - x2) * (x1 - x2)
+		sumV3 += (x1 - x3) * (x1 - x3)
+	} else if sumV2 < 0.0 {
+		sumV1 = 0.0
+		sumV2 = 0.00001
+		sumV3 = 0.0
+		x1 = tree.CHLD[0].CONTRT[i]
+		x2 = tree.CHLD[1].CONTRT[i]
+		x3 = tree.CHLD[2].CONTRT[i]
+		sumV1 += (x2 - x1) * (x2 - x1)
+		sumV3 += (x2 - x3) * (x2 - x3)
+	} else if sumV3 < 0.0 {
+		sumV1 = 0.0
+		sumV2 = 0.0
+		sumV3 = 0.0001
+		x1 = tree.CHLD[0].CONTRT[i]
+		x2 = tree.CHLD[1].CONTRT[i]
+		x3 = tree.CHLD[2].CONTRT[i]
+		sumV1 += (x3 - x1) * (x3 - x1)
+		sumV2 += (x3 - x2) * (x3 - x2)
+	}
+	sumV1 = sumV1 - (tree.CHLD[0].CONPRNLEN[i] - tree.CHLD[0].ClustLEN[i])
+	sumV2 = sumV2 - (tree.CHLD[1].CONPRNLEN[i] - tree.CHLD[1].ClustLEN[i])
+	sumV3 = sumV3 - (tree.CHLD[2].CONPRNLEN[i] - tree.CHLD[2].ClustLEN[i])
+	if sumV1 < 0. {
+		sumV1 = 0.0001
+	}
+	if sumV2 < 0. {
+		sumV2 = 0.0001
+	}
+	if sumV3 < 0. {
+		sumV3 = 0.0001
+	}
+	tree.CHLD[0].ClustLEN[i] = sumV1
+	tree.CHLD[1].ClustLEN[i] = sumV2
+	tree.CHLD[2].ClustLEN[i] = sumV3
+}
+
+//SiteBranchCalc will iteratively calculate approximate ML branch lengths for a particular topology
+func SiteBranchCalc(tree *Node, niter int) {
+	AssertUnrootedTree(tree)
+	for i := 0; i <= niter; i++ {
+		distLen(tree)
+	}
+}
+
+//distLen will perform a single pass of the branch length ML estimation
+func distLen(tree *Node) {
+	rnodes := tree.PreorderArray()
+	lnode := 0
+	for ind, newroot := range rnodes {
+		if len(newroot.CHLD) == 0 {
+			continue
+		} else if newroot != rnodes[0] {
+			tree = newroot.Reroot(rnodes[lnode])
+			lnode = ind
+		}
+		for site := range rnodes[1].CONTRT {
+			for _, cn := range tree.CHLD {
+				pruneToRootParallel(cn, site)
+			}
+			siteDistLen(tree, site)
+		}
+	}
+	tree = rnodes[0].Reroot(tree)
+	//fmt.Println(tree.Newick(true))
+}
+
+//pruneToRootParallel will prune BM branch lens and calculate PIC of a single trait down to a rooted node
+//root node should be a real (ie. bifurcating) root
+func pruneToRootParallel(n *Node, i int) {
+	for _, chld := range n.CHLD {
+		pruneToRootParallel(chld, i)
+	}
+	n.CONPRNLEN[i] = n.ClustLEN[i]
+	nchld := len(n.CHLD)
+	if nchld != 0 { //&& n.MRK == false {
+		if nchld != 2 {
+			fmt.Println("This BM pruning algorithm should only be perfomed on fully bifurcating trees/subtrees! Check for multifurcations and singletons.")
+		}
+		c0 := n.CHLD[0]
+		c1 := n.CHLD[1]
+		bot := ((1.0 / c0.CONPRNLEN[i]) + (1.0 / c1.CONPRNLEN[i]))
+		n.CONPRNLEN[i] += 1.0 / bot
+		tempCharacter := (((1 / c0.CONPRNLEN[i]) * c1.CONTRT[i]) + ((1 / c1.CONPRNLEN[i]) * c0.CONTRT[i])) / bot
+		n.CONTRT[i] = tempCharacter
+	}
 }

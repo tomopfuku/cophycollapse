@@ -63,7 +63,7 @@ func InsertFossilTaxa(tree *Node, traits map[string][]float64, fosNms []string, 
 	return
 }
 
-//InsertFossilTaxaRandom will randomly insert all of the fossil taxa in a dadaset
+//InsertFossilTaxaRandom will randomly insert all of the fossil taxa in a dataset
 func InsertFossilTaxaRandom(tree *Node, traits map[string][]float64, fosNms []string, iter int, missing bool) {
 	nodes := tree.PreorderArray()
 	for _, curFos := range fosNms {

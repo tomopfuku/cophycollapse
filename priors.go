@@ -9,22 +9,24 @@ import (
 
 //BranchLengthPrior is a struct for specifying and calculating different priors
 type BranchLengthPrior struct {
-	TYPE   string
-	ALPHA  float64
-	BETA   float64
-	NTIPS  int
-	SGAMMA float64
-	SFACT  float64
-	CUR    float64
-	LAST   float64
+	TYPE      string
+	ALPHA     float64
+	BETA      float64
+	NTIPS     int
+	SGAMMA    float64
+	SFACT     float64
+	CUR       float64
+	LAST      float64
+	CLUSTCUR  map[int]float64
+	CLUSTLAST map[int]float64
 }
 
 //Calc will return the log prior probability of the branch length prior
 func (pr *BranchLengthPrior) Calc(nodes []*Node) float64 {
 	if pr.TYPE == "1" {
-		return ExponentialBranchLengthLogPrior(nodes, pr.BETA)
+		return ExponentialBranchLengthLogPrior(nodes[1:], pr.BETA)
 	} else if pr.TYPE == "2" {
-		return DirichletBranchLengthLogPrior(nodes, pr)
+		return DirichletBranchLengthLogPrior(nodes[1:], pr)
 	}
 	return 0.0
 }

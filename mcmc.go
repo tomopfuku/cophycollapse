@@ -44,6 +44,7 @@ func singleBrlenMultiplierProp(theta float64, epsilon float64) (thetaStar, propR
 	propRat = c
 	if math.Log(thetaStar) < min { //place a lower constraint on brlen
 		thetaStar = math.Exp(2*min - math.Log(thetaStar))
+		//fmt.Println(thetaStar)
 		propRat = thetaStar / theta
 	}
 	return
@@ -108,6 +109,30 @@ func InitMCMC(gen int, treeOut, logOut string, branchPrior string, printFreq, wr
 	return
 }
 
+func (chain *MCMC) startVals() {
+	treelik := 0.
+	if chain.ALG == "2" {
+		chain.TREELL.CLUSTCUR = make(map[int]float64)
+		chain.BRANCHPRIOR.CLUSTCUR = make(map[int]float64)
+		chain.TREELL.CLUSTLAST = make(map[int]float64)
+		chain.BRANCHPRIOR.CLUSTLAST = make(map[int]float64)
+		for c := range chain.UNIQUEK {
+			AssignClustLens(chain, c)
+			ll := chain.TREELL.CalcCluster(chain, true, c)
+			lp := chain.BRANCHPRIOR.Calc(chain.NODES)
+			chain.TREELL.CLUSTCUR[c] = ll
+			chain.BRANCHPRIOR.CLUSTCUR[c] = lp
+			treelik += ll
+			chain.TREELL.CUR = treelik
+		}
+	} else {
+		chain.TREELL.CUR = chain.TREELL.Calc(chain.TREE, true)
+		chain.BRANCHPRIOR.CUR = chain.BRANCHPRIOR.Calc(chain.NODES)
+		treelik = chain.TREELL.CUR
+	}
+	fmt.Println("Starting MCMC with total tree log-likelihood: ", treelik)
+}
+
 //MCMC is a struct for storing information about the current run
 type MCMC struct {
 	NGEN        int
@@ -148,14 +173,12 @@ func (chain *MCMC) Run() {
 	}
 	logWriter := bufio.NewWriter(logFile)
 	runtime.GOMAXPROCS(chain.PROC)
-	chain.TREELL.CUR = chain.TREELL.Calc(chain.TREE, true)
-	chain.BRANCHPRIOR.CUR = chain.BRANCHPRIOR.Calc(chain.NODES)
+	chain.startVals()
 	acceptanceCount := 0.0
 	topAcceptanceCount := 0.
 	var acceptanceRatio, topAcceptanceRatio float64
 	for i := 0; i < chain.NGEN; i++ {
 		chain.update(i, &topAcceptanceCount, &acceptanceCount)
-
 		if i%200 == 0 && i <= 10000 && i != 0 { // use burn in period to adjust the branch length multiplier step length every 200 generations
 			acceptanceRatio = acceptanceCount / float64(i)
 			chain.STEPLEN = adjustBranchLengthStepLength(chain.STEPLEN, acceptanceRatio)
@@ -167,7 +190,10 @@ func (chain *MCMC) Run() {
 		if i%chain.PRINTFREQ == 0 && i != 0 {
 			acceptanceRatio = acceptanceCount / float64(i)
 			topAcceptanceRatio = topAcceptanceCount / float64(i)
-			fmt.Println(i, chain.BRANCHPRIOR.CUR, chain.TREELL.CUR, acceptanceRatio, topAcceptanceRatio, chain.STEPLEN)
+			if chain.ALG == "2" {
+				chain.TREELL.CUR = chain.TREELL.CalcCombinedClusterLL(chain)
+			}
+			fmt.Println(i, chain.BRANCHPRIOR.CUR, chain.TREELL.CUR, acceptanceRatio, topAcceptanceRatio, len(chain.UNIQUEK))
 		}
 
 		if i%chain.WRITEFREQ == 0 {
@@ -179,7 +205,9 @@ func (chain *MCMC) Run() {
 				fmt.Fprint(lw, "\n")
 			*/
 			//writeTreeFile(tree.Newick(true),w)
-			fmt.Fprint(w, chain.TREE.Newick(true)+";\n")
+			if chain.ALG != "2" {
+				fmt.Fprint(w, chain.TREE.Newick(true)+";\n")
+			}
 		}
 	}
 	logWriter.Flush()
@@ -201,9 +229,7 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 				*topAcceptanceCount += 1.0
 			}
 		} else {
-			s1 := rand.NewSource(time.Now().UnixNano())
-			r1 := rand.New(s1)
-			r := r1.Float64()
+			r := rand.Float64()
 			if r > 0.1 { // apply single branch length update 95% of the time
 				chain.singleBranchLengthUpdate()
 			} else {
@@ -214,9 +240,9 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 			}
 		}
 	} else if chain.ALG == "1" {
-		s1 := rand.NewSource(time.Now().UnixNano())
-		r1 := rand.New(s1)
-		r := r1.Float64()
+		//s1 := rand.NewSource(time.Now().UnixNano())
+		//r1 := rand.New(s1)
+		r := rand.Float64()
 		if r < 0.99 { // apply single branch length update 95% of the time
 			chain.singleBranchLengthUpdate()
 		} else {
@@ -226,17 +252,17 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 			*acceptanceCount += 1.0
 		}
 	} else if chain.ALG == "2" {
-		s1 := rand.NewSource(time.Now().UnixNano())
-		r1 := rand.New(s1)
-		r := r1.Float64()
-		if r < 0.98 { // apply single branch length update 95% of the time
-			chain.singleBranchLengthUpdateCluster()
+		if i != 10000 { //r < 0.98 { //0.99 { // apply single branch length update 95% of the time
+			cluster := chain.UNIQUEK[rand.Intn(len(chain.UNIQUEK))]
+			chain.TREELL.CLUSTLAST[cluster] = chain.TREELL.CLUSTCUR[cluster]
+			chain.singleBranchLengthUpdateCluster(cluster)
+			if chain.TREELL.CLUSTCUR[cluster] != chain.TREELL.CLUSTLAST[cluster] {
+				*acceptanceCount += 1.0
+			}
 		} else {
 			chain.gibbsClusterUpdate()
 		}
-		if chain.TREELL.CUR != chain.TREELL.LAST {
-			*acceptanceCount += 1.0
-		}
+
 	}
 }
 func adjustBranchLengthStepLength(epsilon, acceptanceRatio float64) (epsilonStar float64) { //this will calculate the optimal step length for the single branch length multiplier proposal
@@ -247,16 +273,22 @@ func adjustBranchLengthStepLength(epsilon, acceptanceRatio float64) (epsilonStar
 }
 
 func (chain *MCMC) gibbsClusterUpdate() {
-	for i := range chain.CLUS {
-		chain.siteClusterUpdate(i)
+	for i, c := range chain.CLUS {
+		chain.siteClusterUpdate(i, c)
 	}
-}
+	for _, n := range chain.NODES { //delete auxiliary classes from branch lengths
+		delete(n.ClustLEN, -1)
+		delete(n.ClustLEN, -2)
+	}
+} //chain.CLUSTERSET //
 
 //this will update the cluster assignment of a single specified site
-func (chain *MCMC) siteClusterUpdate(curSite int) {
-	catMinusI := chain.CLUSTERSET //make(map[int][]int)
+func (chain *MCMC) siteClusterUpdate(curSite int, curSiteCluster int) {
+	catMinusI := make(map[int][]int)
+	for k, v := range chain.CLUSTERSET {
+		catMinusI[k] = v
+	}
 	alone := false
-	curSiteCluster := chain.CLUS[curSite]
 	if len(catMinusI[curSiteCluster]) == 1 {
 		delete(catMinusI, curSiteCluster)
 		alone = true
@@ -279,15 +311,17 @@ func (chain *MCMC) siteClusterUpdate(curSite int) {
 		chain.drawAuxBL(aux)
 		clusterProbs = chain.clusterAssignmentProbs(catMinusI, curSite, aux)
 	}
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	r := r1.Float64()
+	//s1 := rand.NewSource(time.Now().UnixNano())
+	//r1 := rand.New(s1)
+	r := rand.Float64()
 	cumprob := 0.
 	var newcluster int
 	for k := range clusterProbs {
 		cumprob += clusterProbs[k]
 		if cumprob > r {
 			newcluster = k
+			//fmt.Println(newcluster,curSiteCluster)
+			break
 		}
 	}
 	if newcluster < 0 { // create a new cluster K+1 if curSite was assigned to one of the aux classes
@@ -306,7 +340,9 @@ func (chain *MCMC) siteClusterUpdate(curSite int) {
 			chain.updateUniqueK(curSiteCluster)
 		} else {
 			chain.CLUSTERSET[curSiteCluster] = catMinusI[curSiteCluster]
+			chain.CLUSTERSET[newcluster] = append(chain.CLUSTERSET[newcluster], curSite)
 		}
+		//os.Exit(0)
 	}
 }
 
@@ -341,7 +377,7 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 	for k := range cat { // calculate assignment probs for all assigned categories
 		rat = float64(len(cat[k])) / denom
 		siteLL := SingleSiteLikeCluster(chain, cur, k)
-		rat = rat * siteLL
+		rat = rat + math.Exp(siteLL)
 		prob[k] = rat
 		ratsum += rat
 	}
@@ -351,13 +387,13 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 	curSiteCluster := chain.CLUS[cur]
 	if aux == -1 { // treat curSiteCluster as one of the auxiliary clusters if curSite has its own cluster (is alone)
 		siteLL = SingleSiteLikeCluster(chain, cur, curSiteCluster)
-		rat = rat * siteLL
+		rat = rat * math.Exp(siteLL)
 		prob[curSiteCluster] = rat
 		ratsum += rat
 	}
-	for k := -1; k <= aux; k-- {
+	for k := -1; k >= aux; k-- {
 		siteLL = SingleSiteLikeCluster(chain, cur, k)
-		rat = rat * siteLL
+		rat = rat * math.Exp(siteLL)
 		prob[k] = rat
 		ratsum += rat
 	}
@@ -369,39 +405,41 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 
 func (chain *MCMC) drawAuxBL(aux int) {
 	for _, n := range chain.NODES {
-		for i := -1; i <= aux; i-- {
-			s1 := rand.NewSource(time.Now().UnixNano())
-			r1 := rand.New(s1)
-			u := r1.Float64()
+		for i := -1; i >= aux; i-- {
+			//u := rand.Float64()
+			u := Rexp(10.)
+			//u := 0.01
 			n.ClustLEN[i] = u //ClustLEN is a map, not list
 		}
 	}
 }
 
-func (chain *MCMC) singleBranchLengthUpdateCluster() {
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	cluster := chain.UNIQUEK[r1.Intn(len(chain.UNIQUEK))]
-	for _, n := range chain.NODES {
-		n.LEN = n.ClustLEN[cluster]
-	}
-	updateNode := RandomNode(chain.NODES)
+func (chain *MCMC) singleBranchLengthUpdateCluster(cluster int) {
+	AssignClustLens(chain, cluster)
+	updateNode := RandomNode(chain.NODES[1:])
 	soldL := updateNode.LEN
 	var propRat float64
 	updateNode.LEN, propRat = singleBrlenMultiplierProp(updateNode.LEN, chain.STEPLEN)
 	llstar := chain.TREELL.CalcCluster(chain, true, cluster)
 	lpstar := chain.BRANCHPRIOR.Calc(chain.NODES)
-	alpha := math.Exp(lpstar-chain.BRANCHPRIOR.CUR) * math.Exp(llstar-chain.TREELL.CUR) * propRat
-	//fmt.Println(llstar, ll, llstar-ll)
-	s1 = rand.NewSource(time.Now().UnixNano())
-	r1 = rand.New(s1)
-	r := r1.Float64()
+	alpha := math.Exp(lpstar-chain.BRANCHPRIOR.CLUSTCUR[cluster]) * math.Exp(llstar-chain.TREELL.CLUSTCUR[cluster]) * propRat
+	//fmt.Println(llstar, chain.TREELL.CLUSTCUR[cluster])
+	var r float64
+	if alpha < 1.0 {
+		r = rand.Float64()
+	} else { // just accept if alpha > 1
+		r = 0.9
+	}
 	if r < alpha {
 		//TODO: need to add attribute for cluster-specific acceptance probs in LL struct
-		chain.TREELL.CUR = llstar
-		chain.BRANCHPRIOR.CUR = lpstar
+		chain.TREELL.CLUSTCUR[cluster] = llstar
+		chain.BRANCHPRIOR.CLUSTCUR[cluster] = lpstar
+		updateNode.ClustLEN[cluster] = updateNode.LEN
+		//fmt.Println(cluster, updateNode.LEN, updateNode.ClustLEN)
+		//os.Exit(0)
 	} else {
 		updateNode.LEN = soldL
+		//updateNode.ClustLEN[cluster] = soldL
 	}
 }
 
@@ -413,21 +451,12 @@ func (chain *MCMC) fossilPlacementUpdate() {
 	x, p, lastn := PruneFossilTip(fn)
 	r := GraftFossilTip(fn.PAR, reattach)
 	propRat := r / (x * p)
-	//tree.UnmarkAll()
-	//lastn.UnmarkToRoot(tree)
-	//fn.UnmarkToRoot(tree)
-	//reattach.UnmarkToRoot(tree)
-	//llstar := WeightedUnrootedLogLike(tree, true, weights)
+
 	llstar := chain.TREELL.Calc(chain.TREE, true)
-	//fmt.Println(llstar, chain.TREELL.CUR)
-	//llstar1 := WeightedUnrootedLogLike(tree, true, weights)
-	//MarkAll(nodes)
-	//fmt.Println(llstar, llstar1)
+
 	lpstar := chain.BRANCHPRIOR.Calc(chain.NODES)
 	alpha := math.Exp(lpstar-chain.BRANCHPRIOR.CUR) * math.Exp(llstar-chain.TREELL.CUR) * propRat
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	r = r1.Float64()
+	r = rand.Float64()
 	if r < alpha {
 		chain.TREELL.CUR = llstar
 		chain.BRANCHPRIOR.CUR = lpstar
@@ -436,14 +465,11 @@ func (chain *MCMC) fossilPlacementUpdate() {
 		GraftFossilTip(fn.PAR, lastn)
 		lastn.LEN = x
 		fn.PAR.LEN = p
-		//fn.UnmarkToRoot(tree)
-		//reattach.UnmarkToRoot(tree)
-		//tree.UnmarkAll()
 	}
 }
 
 func (chain *MCMC) singleBranchLengthUpdate() {
-	updateNode := RandomNode(chain.NODES)
+	updateNode := RandomNode(chain.NODES[1:])
 	soldL := updateNode.LEN
 	//updateNode.UnmarkToRoot(tree)
 	var propRat float64
@@ -456,9 +482,14 @@ func (chain *MCMC) singleBranchLengthUpdate() {
 
 	alpha := math.Exp(lpstar-chain.BRANCHPRIOR.CUR) * math.Exp(llstar-chain.TREELL.CUR) * propRat
 	//fmt.Println(llstar, ll, llstar-ll)
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	r := r1.Float64()
+	//s1 := rand.NewSource(time.Now().UnixNano())
+	//r1 := rand.New(s1)
+	var r float64
+	if alpha < 1.0 {
+		r = rand.Float64()
+	} else {
+		r = 0.9
+	}
 	if r < alpha {
 		chain.TREELL.CUR = llstar
 		chain.BRANCHPRIOR.CUR = lpstar
@@ -485,9 +516,14 @@ func (chain *MCMC) cladeBranchLengthUpdate() {
 
 	alpha := math.Exp(lpstar-chain.BRANCHPRIOR.CUR) * math.Exp(llstar-chain.TREELL.CUR) * propRat
 	//fmt.Println(llstar, ll, llstar-ll)
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	r := r1.Float64()
+	//s1 := rand.NewSource(time.Now().UnixNano())
+	//r1 := rand.New(s1)
+	var r float64
+	if alpha < 1. {
+		r = rand.Float64()
+	} else {
+		r = 0.1
+	}
 	if r < alpha {
 		chain.TREELL.CUR = llstar
 		chain.TREELL.LAST = lpstar

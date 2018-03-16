@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"runtime/pprof"
-	"strings"
 	"time"
 )
 
@@ -37,7 +37,7 @@ func main() {
 	clustArg := flag.Float64("a", 1.0, "clumpiness parameter for trait clustering algorithm")
 	//blMeanArg := flag.Float64("beta", 1.0, "mean branch length for exponential prior or tree length for Dirichlet prior")
 	flag.Parse()
-	f, err := os.Create("profile")
+	f, err := os.Create("profile.prof")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,15 +46,17 @@ func main() {
 	//var ntax,ntraits int
 	nwk := cophymaru.ReadLine(*treeArg)[0]
 	tree := cophymaru.ReadTree(nwk)
+
 	//fmt.Println("SUCCESSFULLY READ IN TREE ", tree.Newick(true))
 	traits, ntax, ntraits := cophymaru.ReadContinuous(*traitArg)
 	fmt.Println("SUCCESSFULLY READ IN ALIGNMENT CONTAINING ", ntax, "TAXA")
 	cophymaru.MapContinuous(tree, traits, ntraits)
 	//cophymaru.IterateBMLengths(tree, *iterArg)
-
+	rand.Seed(time.Now().UTC().UnixNano())
 	var weights []float64
 	var fosSlice []string // read in fossil names from command line
 	if *algArg == "0" {
+		fosSlice = cophymaru.ReadFossils(*fosArg)
 		cophymaru.MissingTraitsEM(tree, *iterArg)
 		if *weightLLArg != "flat" {
 			fmt.Println("Calibrating weights to filter for concordant sites...")
@@ -64,9 +66,6 @@ func main() {
 			for i := 0; i < ntraits; i++ {
 				weights = append(weights, 1.0)
 			}
-		}
-		for _, i := range strings.Split(*fosArg, ",") {
-			fosSlice = append(fosSlice, i)
 		}
 		if *startArg == "0" {
 			starttr, startll := cophymaru.InsertFossilTaxa(tree, traits, fosSlice, *iterArg, *missingArg, weights)
@@ -88,8 +87,15 @@ func main() {
 		cophymaru.MakeRandomStartingBranchLengths(tree)
 		cophymaru.IterateBMLengths(tree, *iterArg)
 	} else if *algArg == "2" {
-		cophymaru.MakeRandomStartingBranchLengths(tree)
-
+		for _, n := range tree.PreorderArray()[1:] {
+			r := rand.Float64()
+			n.LEN = r
+		}
+		//cophymaru.IterateBMLengths(tree, *iterArg)
+		fmt.Println(tree.Newick(true))
+		for i := 0; i < ntraits; i++ {
+			weights = append(weights, 1.0)
+		}
 	}
 	//l1 := cophymaru.CalcUnrootedLogLike(tree, true)
 	//l2 := cophymaru.WeightedUnrootedLogLike(tree, true, weights)
@@ -111,14 +117,19 @@ func main() {
 	}
 	chain := cophymaru.InitMCMC(*genArg, treeOutFile, logOutFile, *brPrior, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, mult, weights, tree, fosSlice, *algArg)
 	if *algArg == "2" { // need to perform some extra steps when using the clustering algorithm
-		cophymaru.InitializeClusters(chain)
+		chain.CLUSTERSET = make(map[int][]int)
 		chain.NSITES = float64(ntraits)
+		//cophymaru.InitializeClusters(chain)
 		//chain.CLUS = c
 		chain.ALPHA = *clustArg
 		denom := chain.NSITES - 1 + chain.ALPHA
 		chain.ALPHAPROB = (chain.ALPHA / 2.) / denom
+		//fmt.Println(cophymaru.ClusterLogLike(chain, 0, true, 4), len(chain.CLUSTERSET[0]))
+		cophymaru.StartingSiteLen(chain)
+		cophymaru.SiteBranchCalc(chain.TREE, 100)
 	}
 	start := time.Now()
+
 	chain.Run()
 	elapsed := time.Since(start)
 	fmt.Println("COMPLETED ", *genArg, "MCMC SIMULATIONS IN ", elapsed)

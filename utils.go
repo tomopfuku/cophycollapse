@@ -3,6 +3,7 @@ package cophymaru
 import (
 	"fmt"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
@@ -59,13 +60,18 @@ func ReadLine(path string) (ln []string) {
 	return
 }
 
+//Rexp will draw a random exponential number
+func Rexp(lambda float64) (e float64) {
+	u := rand.Float64()
+	e = math.Log(1-u) / (-lambda)
+	return
+}
+
 //ReadFossils will read in a list of fossil tips one line at a time into a slice
 //TODO: get this working
 func ReadFossils(path string) (fos []string) {
-	l := ReadLine(path)
-	for _, i := range l {
-		fmt.Println(i)
-	}
+	l := ReadLine(path)[0]
+	fos = strings.Split(l, ",")
 	return
 }
 
