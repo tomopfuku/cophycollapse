@@ -58,13 +58,6 @@ func InitializePrior(priorType string, nodes []*Node) *BranchLengthPrior {
 				ntips++
 			}
 		}
-		//ntipfact := factorial(big.NewInt(int64(ntips)))
-		//f := new(big.Float).SetInt(ntipfact)
-		//var mant float64
-		//var exp float64
-		//mant = float64(f.MantExp(f))
-		//exp = float64(f.MantExp(nil))
-		//logfact := math.Log(mant) + (exp)/0.4342944819032518
 		x := (2 * ntips) - 4
 		logfact := logFactorial(x)
 		pr.NTIPS = ntips

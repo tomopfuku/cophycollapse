@@ -343,8 +343,8 @@ func ClusterLogLike(chain *MCMC, cluster int, startFresh bool) (sitelike float64
 			calcRootedSiteLLParallel(ch2, &tmpll, true, site)
 			calcRootedSiteLLParallel(ch3, &tmpll, true, site)
 			tmpll += calcUnrootedSiteLLParallel(tree, site)
-			sitelike = tmpll
-			//fmt.Println(sitelike, chain.TREE.Newick(true))
+			sitelike += tmpll
+			//fmt.Println("SINGLE", sitelike)
 		}
 	}
 	return

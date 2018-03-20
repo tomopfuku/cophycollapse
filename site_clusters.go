@@ -74,7 +74,7 @@ func StartingSiteLen(chain *MCMC) {
 	for _, n := range chain.NODES {
 		n.ClustLEN = make(map[int]float64)
 		for i := 0; i < len(chain.CLUS); i++ {
-			n.ClustLEN[i] = rand.Float64() //n.LEN //append(n.ClustLEN[i], n.LEN)
+			n.ClustLEN[i] = Rexp(10.) //rand.Float64() //n.LEN //append(n.ClustLEN[i], n.LEN)
 		}
 	}
 }
@@ -84,4 +84,19 @@ func AssignClustLens(chain *MCMC, cluster int) {
 	for _, n := range chain.NODES {
 		n.LEN = n.ClustLEN[cluster]
 	}
+}
+
+//SiteCluster is a struct for storing clusters of branch lengths
+type SiteCluster struct {
+	LABEL int
+	SITES int
+}
+
+//ClusterSet will store all of the individual site clusters
+type ClusterSet struct {
+	Clusters   []*SiteCluster
+	UniqueK    []int
+	SiteVector []int
+	ALPHA      float64
+	ALPHAPROB  float64
 }

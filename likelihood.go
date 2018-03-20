@@ -13,11 +13,12 @@ type LL struct {
 
 //CalcCluster will calculate the log-likelihood of a single cluster
 func (ll *LL) CalcCluster(chain *MCMC, startFresh bool, cluster int) float64 {
-	nsites := len(chain.CLUSTERSET[cluster])
-	if nsites != 1 {
-		return ClusterLogLikeParallel(chain, cluster, startFresh, ll.WORKERS)
-	}
-	return ClusterLogLike(chain, cluster, startFresh)
+	//nsites := len(chain.CLUSTERSET[cluster])
+	//if nsites != 1 {
+	//return ClusterLogLikeParallel(chain, cluster, startFresh, ll.WORKERS)
+	//}
+	clik := ClusterLogLike(chain, cluster, startFresh)
+	return clik
 }
 
 //Calc will calculate the log-likelihood
@@ -31,11 +32,16 @@ func (ll *LL) Calc(tree *Node, startFresh bool) float64 {
 //CalcCombinedClusterLL will calculate the total tree log-likelihood
 func (ll *LL) CalcCombinedClusterLL(chain *MCMC) (treelik float64) {
 	treelik = 0.
-	for c := range chain.UNIQUEK {
-		AssignClustLens(chain, c)
-		cur := ll.CalcCluster(chain, true, c)
-		treelik += cur
+	for c := range chain.TREELL.CLUSTCUR {
+		treelik += chain.TREELL.CLUSTCUR[c]
 	}
+	/*
+		for c := range chain.UNIQUEK {
+			AssignClustLens(chain, c)
+			cur := ll.CalcCluster(chain, true, c)
+			treelik += cur
+		}
+	*/
 	return
 }
 

@@ -37,15 +37,14 @@ func cladeBrlenMultiplierProp(theta []float64, epsilon float64) (thetaStar []flo
 
 func singleBrlenMultiplierProp(theta float64, epsilon float64) (thetaStar, propRat float64) {
 	min := 0.001
-	//a := -6.907755278982137       //calculated from log(min)
-	scalea := -13.815510557964274 //calculated from 2*(log(min))
 	max := 10.
 	u := rand.Float64()
-	epsilon = 0.5
+	//epsilon = 0.5
 	c := math.Exp(((u - 0.5) * epsilon))
 	thetaStar = theta * c
 	propRat = c
 	if thetaStar < min { //place a lower constraint on brlen
+		scalea := -13.815510557964274 //calculated from 2*(log(min))
 		thetaStar = math.Exp(scalea - math.Log(thetaStar))
 		propRat = thetaStar / theta
 	} else if thetaStar > max {
@@ -168,7 +167,7 @@ type MCMC struct {
 	UNIQUEK     []int
 }
 
-//Run will run Markov Chain Monte Carlo simulations, adjusting branch lengths and fossil placements
+//Run performs Markov Chain Monte Carlo simulations, adjusting branch lengths and fossil placements
 func (chain *MCMC) Run() {
 	f, err := os.Create(chain.TREEOUTFILE)
 	if err != nil {
@@ -199,12 +198,19 @@ func (chain *MCMC) Run() {
 			acceptanceRatio = acceptanceCount / float64(i)
 			topAcceptanceRatio = topAcceptanceCount / float64(i)
 			if chain.ALG == "2" {
-				chain.TREELL.CUR = chain.TREELL.CalcCombinedClusterLL(chain)
+				curll := chain.TREELL.CalcCombinedClusterLL(chain)
+				chain.TREELL.CUR = curll
 			}
-			fmt.Println(i, chain.BRANCHPRIOR.CUR, chain.TREELL.CUR, acceptanceRatio, topAcceptanceRatio, len(chain.UNIQUEK))
+			fmt.Println(i, chain.BRANCHPRIOR.CUR, chain.TREELL.CUR, acceptanceRatio, topAcceptanceRatio, len(chain.CLUSTERSET))
+			chain.PrintClusterLL()
+			chain.PrintSiteClusters()
 		}
 
 		if i%chain.WRITEFREQ == 0 {
+			if chain.ALG == "2" {
+				curll := chain.TREELL.CalcCombinedClusterLL(chain)
+				chain.TREELL.CUR = curll
+			}
 			fmt.Fprint(logWriter, strconv.Itoa(i)+"\t"+strconv.FormatFloat(chain.BRANCHPRIOR.CUR, 'f', -1, 64)+"\t"+strconv.FormatFloat(chain.TREELL.CUR, 'f', -1, 64)+"\n")
 			/*
 				for _, ln := range nodes {
@@ -260,22 +266,37 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 			*acceptanceCount += 1.0
 		}
 	} else if chain.ALG == "2" {
-		if i != 500000 && i != 600000 && i != 650000 && i != 700000 { //r < 0.98 { //0.99 { // apply single branch length update 95% of the time
-			updateClust := rand.Intn(len(chain.UNIQUEK))
-			//fmt.Println(chain.UNIQUEK, updateClust)
-			cluster := chain.UNIQUEK[updateClust]
+		var r float64
+		if i > 500000 {
+			r = rand.Float64()
+		} else {
+			r = 0.
+		}
+		if r < 0.9 { //i != 500000 && i != 600000 && i != 650000 && i != 700000 { // //0.99 { // apply single branch length update 95% of the time
+			cluster := randomCluster(chain.CLUSTERSET) //  chain.CLUSTERSET[0]
 			chain.TREELL.CLUSTLAST[cluster] = chain.TREELL.CLUSTCUR[cluster]
+			//last := chain.TREELL.CLUSTCUR[cluster]
 			chain.singleBranchLengthUpdateCluster(cluster)
 			if chain.TREELL.CLUSTCUR[cluster] != chain.TREELL.CLUSTLAST[cluster] {
 				*acceptanceCount += 1.0
 			}
 		} else {
-			//fmt.Println(chain.UNIQUEK)
 			chain.gibbsClusterUpdate()
+			//chain.PrintSiteClusters()
+			//chain.PrintClusterLL()
 		}
 
 	}
 }
+
+func randomCluster(c map[int][]int) int {
+	var clusters []int
+	for k := range c {
+		clusters = append(clusters, k)
+	}
+	return clusters[rand.Intn(len(clusters))]
+}
+
 func adjustBranchLengthStepLength(epsilon, acceptanceRatio float64) (epsilonStar float64) { //this will calculate the optimal step length for the single branch length multiplier proposal
 	acceptanceRatioStar := 0.44 // this is the optimal acceptance probability for uniform proposals
 	s := math.Pi / 2.
@@ -286,11 +307,13 @@ func adjustBranchLengthStepLength(epsilon, acceptanceRatio float64) (epsilonStar
 func (chain *MCMC) gibbsClusterUpdate() {
 	for i, c := range chain.CLUS {
 		chain.siteClusterUpdate(i, c)
+		//fmt.Println(i, chain.UNIQUEK, chain.CLUSTERSET)
 	}
 	for _, n := range chain.NODES { //delete auxiliary classes from branch lengths
 		delete(n.ClustLEN, -1)
 		delete(n.ClustLEN, -2)
 	}
+	chain.updateClusterLL()
 } //chain.CLUSTERSET //
 
 //this will update the cluster assignment of a single specified site
@@ -338,7 +361,9 @@ func (chain *MCMC) siteClusterUpdate(curSite int, curSiteCluster int) {
 				delete(n.ClustLEN, curSiteCluster) // delete any clusters that are empty
 			}
 			delete(chain.CLUSTERSET, curSiteCluster)
-			chain.updateUniqueK(curSiteCluster)
+			delete(chain.TREELL.CLUSTCUR, curSiteCluster)
+			delete(chain.BRANCHPRIOR.CLUSTCUR, curSiteCluster)
+			//chain.updateUniqueK(curSiteCluster)
 			chain.CLUSTERSET[newcluster] = append(chain.CLUSTERSET[newcluster], curSite)
 		} else {
 			chain.CLUSTERSET[curSiteCluster] = catMinusI[curSiteCluster]
@@ -384,6 +409,13 @@ func (chain *MCMC) updateUniqueK(del int) {
 		}
 	}
 	chain.UNIQUEK = new
+}
+
+func (chain *MCMC) updateClusterLL() {
+	for c := range chain.CLUSTERSET {
+		ll := chain.TREELL.CalcCluster(chain, true, c)
+		chain.TREELL.CLUSTCUR[c] = ll
+	}
 }
 
 func (chain *MCMC) updateAssignmentVector(curSite, newcluster int) {
@@ -450,9 +482,21 @@ func (chain *MCMC) drawAuxBL(aux int) {
 
 //PrintClusterTrees will print out the branch lengths for each cluster in the dataset
 func (chain *MCMC) PrintClusterTrees() {
-	for _, c := range chain.UNIQUEK {
+	for c := range chain.CLUSTERSET {
 		AssignClustLens(chain, c)
 		fmt.Println(c, chain.TREE.Newick(true))
+	}
+}
+
+//PrintSiteClusters will print out the current assignments of sites to clusters
+func (chain *MCMC) PrintSiteClusters() {
+	fmt.Println(chain.CLUSTERSET)
+}
+
+//PrintClusterLL will print thel ikelhood of each existing cluster
+func (chain *MCMC) PrintClusterLL() {
+	for c := range chain.TREELL.CLUSTCUR {
+		fmt.Println("CLUSTER", c, chain.TREELL.CLUSTCUR[c])
 	}
 }
 

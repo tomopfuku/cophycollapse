@@ -129,9 +129,9 @@ func main() {
 		//cophymaru.SiteBranchCalc(chain.TREE, 100)
 	}
 	start := time.Now()
-	chain.PrintClusterTrees()
 	chain.Run()
 	chain.PrintClusterTrees()
+	chain.PrintSiteClusters()
 	elapsed := time.Since(start)
 	fmt.Println("COMPLETED ", *genArg, "MCMC SIMULATIONS IN ", elapsed)
 }

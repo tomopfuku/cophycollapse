@@ -64,6 +64,7 @@ func ReadLine(path string) (ln []string) {
 func Rexp(lambda float64) (e float64) {
 	u := rand.Float64()
 	e = math.Log(1-u) / (-lambda)
+	e = e / 2.
 	return
 }
 
