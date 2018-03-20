@@ -91,11 +91,10 @@ func main() {
 			r := rand.Float64()
 			n.LEN = r
 		}
-		//cophymaru.IterateBMLengths(tree, *iterArg)
-		fmt.Println(tree.Newick(true))
 		for i := 0; i < ntraits; i++ {
 			weights = append(weights, 1.0)
 		}
+		cophymaru.IterateBMLengths(tree, *iterArg) //going to optimize branch lengths to set mean parameter for tree length in dirichlet prior
 	}
 	//l1 := cophymaru.CalcUnrootedLogLike(tree, true)
 	//l2 := cophymaru.WeightedUnrootedLogLike(tree, true, weights)
@@ -119,14 +118,8 @@ func main() {
 	if *algArg == "2" { // need to perform some extra steps when using the clustering algorithm
 		chain.CLUSTERSET = make(map[int][]int)
 		chain.NSITES = float64(ntraits)
-		//cophymaru.InitializeClusters(chain)
-		//chain.CLUS = c
 		chain.ALPHA = *clustArg
-		denom := chain.NSITES - 1 + chain.ALPHA
-		chain.ALPHAPROB = (chain.ALPHA / 2.) / denom
-		//fmt.Println(cophymaru.ClusterLogLike(chain, 0, true, 4), len(chain.CLUSTERSET[0]))
 		cophymaru.StartingSiteLen(chain)
-		//cophymaru.SiteBranchCalc(chain.TREE, 100)
 	}
 	start := time.Now()
 	chain.Run()

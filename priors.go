@@ -5,6 +5,8 @@ import (
 	"math"
 	"math/big"
 	"os"
+
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 //BranchLengthPrior is a struct for specifying and calculating different priors
@@ -19,6 +21,8 @@ type BranchLengthPrior struct {
 	LAST      float64
 	CLUSTCUR  map[int]float64
 	CLUSTLAST map[int]float64
+	TREELEN   float64
+	GAMMADIST distuv.Gamma
 }
 
 //Calc will return the log prior probability of the branch length prior
@@ -49,6 +53,7 @@ func InitializePrior(priorType string, nodes []*Node) *BranchLengthPrior {
 		pr.BETA = 1.0
 	} else if pr.TYPE == "2" {
 		T := TreeLength(nodes)
+		pr.TREELEN = T
 		pr.ALPHA = 1.0
 		//pr.BETA = 10.0
 		pr.BETA = T
@@ -63,7 +68,10 @@ func InitializePrior(priorType string, nodes []*Node) *BranchLengthPrior {
 		pr.NTIPS = ntips
 		pr.SFACT = logfact
 		pr.SGAMMA = math.Gamma(pr.ALPHA)
-
+		pr.GAMMADIST = distuv.Gamma{
+			Alpha: 1.0,
+			Beta:  pr.TREELEN,
+		}
 	} else {
 		fmt.Println("PLEASE SPECIFY VALID OPTION FOR PRIOR. TYPE maru -h TO SEE OPTIONS")
 		os.Exit(0)
@@ -100,6 +108,27 @@ func DirichletBranchLengthLogPrior(nodes []*Node, pr *BranchLengthPrior) float64
 	prob = prob + pr.SFACT
 	//fmt.Println(logfact, pr.SFACT)
 	return prob
+}
+
+//DrawDirichletBranchLengths will randomly assign branchlengths from the compound dirichlet distribution
+func (pr *BranchLengthPrior) DrawDirichletBranchLengths(nodes []*Node) (lengths []float64) { //beta parameter should be the mean tree length
+	if pr.TYPE == "2" {
+		drawsum := 0.
+		for range nodes[1:] {
+			curdraw := pr.GAMMADIST.Rand()
+			drawsum += curdraw
+			lengths = append(lengths, curdraw)
+		}
+
+		for i := range lengths {
+			lengths[i] = lengths[i] / drawsum
+		}
+
+	} else {
+		fmt.Println("You specified a prior other than Dirichlet, but are trying to generate branch lengths under a Dirichlet generating distribution.")
+		os.Exit(0)
+	}
+	return
 }
 
 func factorial(val *big.Int) *big.Int {

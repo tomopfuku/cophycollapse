@@ -162,7 +162,6 @@ type MCMC struct {
 	CLUS        []int // stores the current allocation of clusters for each site.
 	NSITES      float64
 	ALPHA       float64
-	ALPHAPROB   float64
 	CLUSTERSET  map[int][]int // stores the single set of clusters and their assignments
 	UNIQUEK     []int
 }
@@ -435,7 +434,8 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 	prob = make(map[int]float64)
 	var rat float64
 	ratsum := 0.
-	denom := chain.NSITES - 1 + chain.ALPHA
+	//denom := chain.NSITES - 1 + chain.ALPHA
+	denom := float64(len(chain.CLUSTERSET)) - 1 + chain.ALPHA
 	for k := range cat { // calculate assignment probs for all assigned categories
 		rat = float64(len(cat[k])) / denom
 		siteLL := SingleSiteLikeCluster(chain, cur, k)
@@ -445,8 +445,8 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 		//fmt.Println("REAL", ratsum, siteLL, cur, k, chain.UNIQUEK)
 
 	}
-	//now need to calculate the probabilites for reassigning to an auxilliary category
-	rat = chain.ALPHAPROB
+	//now need to calculate the probabilites for reassigning to an auxiliary category
+	rat = (chain.ALPHA / 2.) / denom
 	var siteLL float64
 	curSiteCluster := chain.CLUS[cur]
 	if aux == -1 { // treat curSiteCluster as one of the auxiliary clusters if curSite has its own cluster (is alone)
@@ -470,13 +470,23 @@ func (chain *MCMC) clusterAssignmentProbs(cat map[int][]int, cur, aux int) (prob
 }
 
 func (chain *MCMC) drawAuxBL(aux int) {
-	for _, n := range chain.NODES {
-		for i := -1; i >= aux; i-- {
-			//u := rand.Float64()
-			u := Rexp(10.)
-			//u := 0.01
-			n.ClustLEN[i] = u //ClustLEN is a map, not list
+	if chain.BRANCHPRIOR.TYPE == "1" {
+		for _, n := range chain.NODES[1:] {
+			for i := -1; i >= aux; i-- {
+				u := Rexp(10.)
+				n.ClustLEN[i] = u //ClustLEN is a map, not list
+			}
 		}
+	} else {
+		lengths := chain.BRANCHPRIOR.DrawDirichletBranchLengths(chain.NODES)
+		for i, n := range chain.NODES[1:] {
+			for j := -1; j >= aux; j-- {
+				n.ClustLEN[j] = lengths[i]
+			}
+		}
+		AssignClustLens(chain, -2)
+		fmt.Println(chain.TREE.Newick(true))
+		os.Exit(0)
 	}
 }
 
