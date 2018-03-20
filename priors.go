@@ -70,7 +70,7 @@ func InitializePrior(priorType string, nodes []*Node) *BranchLengthPrior {
 		pr.SGAMMA = math.Gamma(pr.ALPHA)
 		pr.GAMMADIST = distuv.Gamma{
 			Alpha: 1.0,
-			Beta:  pr.TREELEN,
+			Beta:  pr.TREELEN / ((float64(ntips) * 2.) - 3.),
 		}
 	} else {
 		fmt.Println("PLEASE SPECIFY VALID OPTION FOR PRIOR. TYPE maru -h TO SEE OPTIONS")
@@ -114,6 +114,8 @@ func DirichletBranchLengthLogPrior(nodes []*Node, pr *BranchLengthPrior) float64
 func (pr *BranchLengthPrior) DrawDirichletBranchLengths(nodes []*Node) (lengths []float64) { //beta parameter should be the mean tree length
 	if pr.TYPE == "2" {
 		drawsum := 0.
+		lengths = append(lengths, 0.)
+
 		for range nodes[1:] {
 			curdraw := pr.GAMMADIST.Rand()
 			drawsum += curdraw
