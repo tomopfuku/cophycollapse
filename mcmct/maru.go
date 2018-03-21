@@ -123,7 +123,9 @@ func main() {
 		} else {
 			chain.ALPHA = *clustArg
 		}
-		cophymaru.StartingSiteLen(chain)
+		//cophymaru.StartingSiteLen(chain)
+		//chain.PrintClusterTrees()
+		cophymaru.InitializeClusters(chain)
 	}
 	start := time.Now()
 	chain.Run()

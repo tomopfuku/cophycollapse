@@ -21,7 +21,7 @@ func brlenSlidingWindow(theta float64, wsize float64) (thetaStar float64) {
 	return
 }
 
-func dppAlphaSlidingWindow(theta float64, wsize float64) (thetaStar float64) {
+func SlidingWindow(theta float64, wsize float64) (thetaStar float64) {
 	u := rand.Float64()
 	thetaStar = theta - (wsize / 2.) + (wsize * u)
 	if thetaStar < 0. {
@@ -211,6 +211,7 @@ func (chain *MCMC) Run() {
 				nparam := ((float64(chain.BRANCHPRIOR.NTIPS * 2.)) - 3.) * float64(len(chain.CLUSTERSET))
 				aic := (2 * nparam) - (2 * curll)
 				fmt.Println("AIC", aic)
+
 			}
 
 			fmt.Println(i, chain.BRANCHPRIOR.CUR, chain.TREELL.CUR, acceptanceRatio, topAcceptanceRatio, len(chain.CLUSTERSET))
@@ -237,6 +238,8 @@ func (chain *MCMC) Run() {
 			//writeTreeFile(tree.Newick(true),w)
 			if chain.ALG != "2" {
 				fmt.Fprint(w, chain.TREE.Newick(true)+";\n")
+			} else {
+				fmt.Fprint(w, ClusterString(chain.CLUSTERSET)+"\n")
 			}
 		}
 	}
@@ -282,13 +285,15 @@ func (chain *MCMC) update(i int, topAcceptanceCount *float64, acceptanceCount *f
 			*acceptanceCount += 1.0
 		}
 	} else if chain.ALG == "2" {
-		var r float64
-		if i > 500 {
-			r = rand.Float64()
-		} else {
-			r = 0.
-		}
-		if r < 0.9 { //i != 500000 && i != 600000 && i != 650000 && i != 700000 { // //0.99 { // apply single branch length update 95% of the time
+		/*
+			var r float64
+			if i > 500 {
+				r = rand.Float64()
+			} else {
+				r = 0.
+			}
+		*/
+		if i%500 != 0 { //r < 0.99 { //i != 500000 && i != 600000 && i != 650000 && i != 700000 { // //0.99 { // apply single branch length update 95% of the time
 			cluster := randomCluster(chain.CLUSTERSET) //  chain.CLUSTERSET[0]
 			chain.TREELL.CLUSTLAST[cluster] = chain.TREELL.CLUSTCUR[cluster]
 			//last := chain.TREELL.CLUSTCUR[cluster]

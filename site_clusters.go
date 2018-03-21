@@ -1,8 +1,10 @@
 package cophymaru
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
+	"strconv"
 )
 
 //InitializeClusters will initialize branch length clusters for the cluster model
@@ -35,10 +37,28 @@ func InitializeClusters(chain *MCMC) {
 	for _, n := range chain.NODES {
 		n.ClustLEN = make(map[int]float64)
 		for i := 0; i < K; i++ {
-			n.ClustLEN[i] = n.LEN //append(n.ClustLEN[i], n.LEN)
+			n.ClustLEN[i] = rand.ExpFloat64() //n.LEN //append(n.ClustLEN[i], n.LEN)
 		}
 	}
 	return
+}
+
+//ClusterString will return a string of the current set of clusters
+func ClusterString(cSet map[int][]int) string {
+	var buffer bytes.Buffer
+	for c := range cSet {
+		buffer.WriteString("(")
+		for ind, site := range cSet[c] {
+			cur := strconv.Itoa(site)
+			buffer.WriteString(cur)
+			stop := len(cSet[c]) - 1
+			if ind != stop {
+				buffer.WriteString(",")
+			}
+		}
+		buffer.WriteString(");")
+	}
+	return buffer.String()
 }
 
 /*/SiteDistMatrix will calculate the distance matrix at each site
