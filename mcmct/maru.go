@@ -118,8 +118,14 @@ func main() {
 	if *algArg == "2" { // need to perform some extra steps when using the clustering algorithm
 		chain.CLUSTERSET = make(map[int][]int)
 		chain.NSITES = float64(ntraits)
-		chain.ALPHA = *clustArg
-		cophymaru.StartingSiteLen(chain)
+		if *clustArg == -1. {
+			chain.ALPHA = rand.Float64() * 5.
+		} else {
+			chain.ALPHA = *clustArg
+		}
+		//cophymaru.StartingSiteLen(chain)
+		//chain.PrintClusterTrees()
+		cophymaru.InitializeClusters(chain)
 	}
 	start := time.Now()
 	chain.Run()
