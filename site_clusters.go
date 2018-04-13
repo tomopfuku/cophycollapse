@@ -86,17 +86,8 @@ func AssignClustLens(chain *MCMC, cluster int) {
 	}
 }
 
-//SiteCluster is a struct for storing clusters of branch lengths
-type SiteCluster struct {
+//Cluster is a struct for storing clusters of branch lengths
+type Cluster struct {
 	LABEL int
 	SITES int
-}
-
-//ClusterSet will store all of the individual site clusters
-type ClusterSet struct {
-	Clusters   []*SiteCluster
-	UniqueK    []int
-	SiteVector []int
-	ALPHA      float64
-	ALPHAPROB  float64
 }
