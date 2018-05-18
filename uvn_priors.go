@@ -1,12 +1,21 @@
 package cophymaru
 
-//InitPrior will initialize the prior on the  matrix and BM mean
-func InitPrior(mu0 float64, k0 float64, alpha0, beta0 float64) *NormalGammaPrior {
+import (
+	"gonum.org/v1/gonum/stat/distuv"
+)
+
+//InitNGPrior will initialize the prior on the  matrix and BM mean
+func InitNGPrior(mu0 float64, k0 float64, alpha0, beta0 float64) *NormalGammaPrior {
 	p := new(NormalGammaPrior)
 	p.Mu0 = mu0
 	p.K0 = k0
 	p.Alpha0 = alpha0
 	p.Beta0 = beta0
+	stt := new(distuv.StudentsT)
+	stt.Mu = p.Mu0
+	stt.Sigma = (p.Beta0 * (p.K0 + 1.)) / (p.Alpha0 * p.K0)
+	stt.Nu = 2 * p.Alpha0
+	p.PPDensity = stt
 	return p
 }
 
@@ -18,7 +27,7 @@ type NormalGammaPrior struct {
 	Beta0  float64 // scale hyperparemeter on the variance of the distance estimates
 	//PostPredProd float64 // this will store Mu0*Mu0^T*K0 (for use in calculating the posterior parameters)
 	//Mu0K0        *mat.Dense
-	PPDensity float64
+	PPDensity *distuv.StudentsT
 }
 
 // NGPost stores values for the posterior distribution calculated analytically from GIWPrior and the phylo BM likelihood

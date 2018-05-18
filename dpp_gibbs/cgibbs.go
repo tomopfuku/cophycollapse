@@ -64,13 +64,14 @@ func main() {
 			os.Exit(0)
 		}
 	*/
-	vcv := cophymaru.SetIdentityMatrix(ntax)
-	mu0 := cophymaru.GIWStartingSampleMean(traits)
-	brownianPrior := cophymaru.InitVCVPrior(mu0, 1, vcv, float64(ntax)) // instantiate the prior on the brownian proces
-	chain := cophymaru.InitGibbs(traits, brownianPrior, *genArg, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, *clustArg)
-	//os.Exit(0)
+	//vcv := cophymaru.SetIdentityMatrix(ntax)
+	nodes := tree.PreorderArray()
+	dist := cophymaru.DM(nodes)
+	fmt.Println(dist.MatSites[0])
+	ngprior := cophymaru.InitNGPrior(0., 5., 1.25, 2.)
+	chain := cophymaru.InitUVNGibbs(nodes, ngprior, *genArg, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, *clustArg)
 	start := time.Now()
 	chain.Run()
 	elapsed := time.Since(start)
-	fmt.Println("COMPLETED ", *genArg, "MCMC SIMULATIONS IN ", elapsed)
+	fmt.Println("COMPLETED ", *genArg, "COLLAPSED GIBBS SIMULATIONS IN ", elapsed)
 }
