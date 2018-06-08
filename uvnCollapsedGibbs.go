@@ -62,26 +62,28 @@ func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, thr
 
 //Run will run MCMC simulations
 func (chain *UVNDPPGibbs) Run() {
-	//var assoc []*mat.Dense
-	assoc := make(map[*mat.Dense]string)
+	var assoc []*mat.Dense
 	for gen := 0; gen <= chain.Gen; gen++ {
 		chain.collapsedGibbsClusterUpdate()
-		clusterString := chain.ClusterString()
-		fmt.Println(len(chain.Clusters), clusterString)
+		fmt.Println(len(chain.Clusters), chain.ClusterString())
 		m := chain.clusterAssociationMatrix()
 		//matPrint(m)
-		//assoc = append(assoc, m)
-		assoc[m] = clusterString
+		assoc = append(assoc, m)
 	}
 	chain.summarize(assoc)
 }
 
-func (chain *UVNDPPGibbs) summarize(assoc map[*mat.Dense]string) {
-	//TODO: make functional summary using mat.Equal()
-	//counts := make(map[string]int)
-	//for clusterString, assMat := range assoc {
-
-	//}
+func (chain *UVNDPPGibbs) summarize(assoc []*mat.Dense) {
+	counts := make(map[fmt.Formatter]int)
+	for _, gen := range assoc {
+		rows := mat.Formatted(gen, mat.Prefix(""), mat.Squeeze())
+		if _, ok := counts[rows]; ok {
+			counts[rows]++
+		} else {
+			counts[rows] = 1
+		}
+	}
+	fmt.Println(counts)
 }
 
 func (chain *UVNDPPGibbs) clusterAssociationMatrix() *mat.Dense {
