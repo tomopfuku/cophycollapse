@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 //InitMissingValues will find the missing sites in a data matrix and plug in values corresponding to the mean of the remaining sites
 func InitMissingValues(tree []*Node) {

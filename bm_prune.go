@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 import (
 	"fmt"

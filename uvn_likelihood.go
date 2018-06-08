@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 //UVNLike will store all data and params for each cluster
 type UVNLike struct {

@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 import (
 	"gonum.org/v1/gonum/stat/distuv"

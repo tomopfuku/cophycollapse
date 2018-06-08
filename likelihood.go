@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 //LL is a struct for likelihood functions/calculations
 type LL struct {

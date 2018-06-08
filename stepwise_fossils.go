@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 //TODO: this has a bug somewhere. need to track it down at some point.
 

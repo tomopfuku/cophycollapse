@@ -1,4 +1,4 @@
-package cophymaru
+package cophycollapse
 
 import (
 	"bytes"
@@ -62,36 +62,35 @@ func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, thr
 
 //Run will run MCMC simulations
 func (chain *UVNDPPGibbs) Run() {
-	var assoc []*mat.Dense
+	//var assoc []*mat.Dense
+	assoc := make(map[*mat.Dense]string)
 	for gen := 0; gen <= chain.Gen; gen++ {
 		chain.collapsedGibbsClusterUpdate()
-		fmt.Println(len(chain.Clusters), chain.ClusterString())
+		clusterString := chain.ClusterString()
+		fmt.Println(len(chain.Clusters), clusterString)
 		m := chain.clusterAssociationMatrix()
 		//matPrint(m)
-		assoc = append(assoc, m)
+		//assoc = append(assoc, m)
+		assoc[m] = clusterString
 	}
 	chain.summarize(assoc)
 }
 
-func (chain *UVNDPPGibbs) summarize(assoc []*mat.Dense) {
-	counts := make(map[*mat.Dense]int)
-	for _, gen := range assoc {
-		if _, ok := counts[gen]; ok {
-			counts[gen]++
-		} else {
-			counts[gen] = 1
-		}
-	}
-	//fmt.Println(counts)
+func (chain *UVNDPPGibbs) summarize(assoc map[*mat.Dense]string) {
+	//TODO: make functional summary using mat.Equal()
+	//counts := make(map[string]int)
+	//for clusterString, assMat := range assoc {
+
+	//}
 }
 
 func (chain *UVNDPPGibbs) clusterAssociationMatrix() *mat.Dense {
 	mat := mat.NewDense(chain.Dist.IntNSites, chain.Dist.IntNSites, nil)
 	for site1 := 0; site1 < chain.Dist.IntNSites; site1++ {
 		for site2 := 0; site2 < chain.Dist.IntNSites; site2++ {
-			if site1 == site2 || site1 > site2 {
-				continue
-			}
+			//if site1 == site2 || site1 > site2 {
+			//	continue
+			//}
 			if chain.SiteAssignments[site1] == chain.SiteAssignments[site2] {
 				mat.Set(site1, site2, 1.)
 			} else {
@@ -126,15 +125,13 @@ func (chain *UVNDPPGibbs) collapsedSiteClusterUpdate(site int, siteClusterLab in
 	clustProbs := make(map[int]float64)
 	for k, v := range chain.Clusters {
 		prob := chain.calcClusterProb(k, v, site)
-		//fmt.Println(k, prob)
+		//fmt.Println(prob)
 		sum += prob
 		clustProbs[k] = prob
-
 	}
 	newClustLab := MaxClustLab(clustProbs) + 1
 	g0 := chain.calcNewClusterProb(site)
 	newClustProb := chain.Alpha / (chain.Dist.NSites + chain.Alpha - 1.) * g0 //chain.Prior.PPDensity
-
 	clustProbs[newClustLab] = newClustProb
 	sum += newClustProb
 	r := rand.Float64()
@@ -142,8 +139,10 @@ func (chain *UVNDPPGibbs) collapsedSiteClusterUpdate(site int, siteClusterLab in
 	newCluster := -1
 	for k, v := range clustProbs {
 		//clustProbs[k] = v / sum
+		if v == 0. {
+			continue
+		}
 		cumprob += v / sum
-		//fmt.Println(cumprob)
 		if cumprob > r {
 			newCluster = k
 			break
@@ -229,6 +228,7 @@ func (chain *UVNDPPGibbs) calcClusterProb(clusLab int, clust *UVNLike, testsite 
 		//muPlus1 = append(muPlus1, clust.MuN[i])
 		//TODO: need to finish typing the calculation of these parameters and calc the PP density
 	}
+
 	return
 }
 
