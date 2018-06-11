@@ -62,17 +62,63 @@ func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, thr
 
 //Run will run MCMC simulations
 func (chain *UVNDPPGibbs) Run() {
-	var assoc []*mat.Dense
+	//var assoc []*mat.Dense
+	matStrings := make(map[*mat.Dense]string)
 	for gen := 0; gen <= chain.Gen; gen++ {
 		chain.collapsedGibbsClusterUpdate()
-		fmt.Println(len(chain.Clusters), chain.ClusterString())
+		clusterString := chain.ClusterString()
+		//fmt.Println(len(chain.Clusters), clusterString)
 		m := chain.clusterAssociationMatrix()
 		//matPrint(m)
-		assoc = append(assoc, m)
+		matStrings[m] = clusterString
+		//assoc = append(assoc, m)
 	}
-	chain.summarize(assoc)
+	chain.summarize(matStrings)
 }
 
+func (chain *UVNDPPGibbs) summarize(matStrings map[*mat.Dense]string) map[*mat.Dense]int {
+	counts := make(map[*mat.Dense]int)
+	//var seen []*mat.Dense
+	//seen = append(seen, assoc[0])
+	start := false
+	for m := range matStrings {
+		if start == false {
+			//seen = append(seen, m)
+			counts[m] = 1
+			start = true
+			continue
+		}
+		unique := true
+		for checkMat := range counts {
+			equal := mat.Equal(m, checkMat)
+			if equal == true {
+				counts[checkMat]++
+				//num++
+				unique = false
+				break
+			}
+		}
+		if unique == true {
+			counts[m] = 1
+		}
+	}
+	freq := 0
+	var MAP string
+	for i, num := range counts {
+		clusterString := matStrings[i]
+		//if num != 1 {
+		//	fmt.Println(i, clusterString, num)
+		//}
+		if num > freq {
+			MAP = clusterString
+			freq = num
+		}
+	}
+	fmt.Println(MAP, freq)
+	return counts
+}
+
+/*
 func (chain *UVNDPPGibbs) summarize(assoc []*mat.Dense) {
 	counts := make(map[fmt.Formatter]int)
 	for _, gen := range assoc {
@@ -85,6 +131,7 @@ func (chain *UVNDPPGibbs) summarize(assoc []*mat.Dense) {
 	}
 	fmt.Println(counts)
 }
+*/
 
 func (chain *UVNDPPGibbs) clusterAssociationMatrix() *mat.Dense {
 	mat := mat.NewDense(chain.Dist.IntNSites, chain.Dist.IntNSites, nil)
