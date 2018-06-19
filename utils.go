@@ -105,6 +105,16 @@ func matPrint(X mat.Matrix) {
 	fmt.Printf("%v\n", fa)
 }
 
+//MeanInt wil calculate the mean from a slice of ints
+func MeanInt(v []int) int {
+	sum := 0
+	for _, i := range v {
+		sum += int(i)
+	}
+	sum = sum / len(v)
+	return sum
+}
+
 //SetIdentityMatrix will return an identiy matrix with dimensions ntax,ntax
 func SetIdentityMatrix(dim int) *mat.Dense {
 	matrix := mat.NewDense(dim, dim, nil)

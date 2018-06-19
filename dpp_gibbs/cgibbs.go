@@ -21,10 +21,9 @@ func postorder(curnode *cophycollapse.Node) {
 func main() {
 	treeArg := flag.String("t", "", "input tree")
 	traitArg := flag.String("m", "", "continuous traits")
-	iterArg := flag.Int("i", 5, "num iterations for branch length iteration")
 	genArg := flag.Int("gen", 500000, "number of MCMC generations to run")
-	printFreqArg := flag.Int("pr", 10000, "Frequency with which to print to the screen")
-	sampFreqArg := flag.Int("samp", 1000, "Frequency with which to sample from the chain")
+	printFreqArg := flag.Int("pr", 50, "Frequency with which to print to the screen")
+	sampFreqArg := flag.Int("samp", 1, "Frequency with which to sample from the chain")
 	runNameArg := flag.String("o", "cophycollapse", "specify the prefix for outfile names")
 	threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
 	workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
@@ -47,9 +46,9 @@ func main() {
 		r := rand.Float64()
 		n.LEN = r
 	}
-	cophycollapse.IterateBMLengths(tree, *iterArg) //going to optimize branch lengths to set mean parameter for tree length in dirichlet prior
+	//	cophycollapse.IterateBMLengths(tree, *iterArg) //going to optimize branch lengths to set mean parameter for tree length in dirichlet prior
 	treeOutFile := *runNameArg
-	treeOutFile += ".t"
+	treeOutFile += ".clusters"
 	logOutFile := *runNameArg
 	logOutFile += ".mcmc"
 
@@ -68,8 +67,8 @@ func main() {
 	nodes := tree.PreorderArray()
 	dist := cophycollapse.DM(nodes)
 	fmt.Println(dist.MatSites[0])
-	ngprior := cophycollapse.InitNGPrior(0., 5., 1.25, 2.)
-	chain := cophycollapse.InitUVNGibbs(nodes, ngprior, *genArg, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, *clustArg)
+	ngprior := cophycollapse.InitNGPrior(0.0, 2., 1.25, 2.)
+	chain := cophycollapse.InitUVNGibbs(nodes, ngprior, *genArg, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, *clustArg, treeOutFile, logOutFile)
 	start := time.Now()
 	chain.Run()
 	elapsed := time.Since(start)

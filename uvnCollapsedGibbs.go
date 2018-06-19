@@ -1,8 +1,10 @@
 package cophycollapse
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -23,6 +25,8 @@ type UVNDPPGibbs struct {
 	Threads         int
 	Workers         int
 	Alpha           float64
+	ClustOutFile    string
+	LogOutFile      string
 }
 
 //ClusterString will return a string of the current set of clusters
@@ -45,7 +49,7 @@ func (chain *UVNDPPGibbs) ClusterString() string {
 }
 
 //InitUVNGibbs will initialize the parameters for the collapsed gibbs sampler.
-func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, threads, workers int, alpha float64) *UVNDPPGibbs {
+func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, threads, workers int, alpha float64, treeOut, logOut string) *UVNDPPGibbs {
 	gibbs := new(UVNDPPGibbs)
 	dist := DM(nodes)
 	gibbs.Dist = dist
@@ -56,6 +60,8 @@ func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, thr
 	gibbs.WriteFreq = write
 	gibbs.Threads = threads
 	gibbs.Workers = workers
+	gibbs.ClustOutFile = treeOut
+	gibbs.LogOutFile = logOut
 	gibbs.startingClusters()
 	return gibbs
 }
@@ -63,7 +69,19 @@ func InitUVNGibbs(nodes []*Node, prior *NormalGammaPrior, gen, print, write, thr
 //Run will run MCMC simulations
 func (chain *UVNDPPGibbs) Run() {
 	//var assoc []*mat.Dense
+	f, err := os.Create(chain.ClustOutFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	w := bufio.NewWriter(f)
+	logFile, err := os.Create(chain.LogOutFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	logWriter := bufio.NewWriter(logFile)
+
 	matStrings := make(map[*mat.Dense]string)
+	var KC []int
 	for gen := 0; gen <= chain.Gen; gen++ {
 		chain.collapsedGibbsClusterUpdate()
 		clusterString := chain.ClusterString()
@@ -72,11 +90,79 @@ func (chain *UVNDPPGibbs) Run() {
 		//matPrint(m)
 		matStrings[m] = clusterString
 		//assoc = append(assoc, m)
+		KC = append(KC, len(chain.Clusters))
+		if gen%chain.PrintFreq == 0 {
+			fmt.Println(gen, len(chain.Clusters))
+		}
+		if gen%chain.WriteFreq == 0 {
+			fmt.Fprint(logWriter, strconv.Itoa(len(chain.Clusters))+"\n")
+			fmt.Fprint(w, clusterString+"\n")
+		}
 	}
-	chain.summarize(matStrings)
+	logWriter.Flush()
+	err = w.Flush()
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
+	mapK := MeanInt(KC)
+	fmt.Println("MAP NUMBER OF CLUSTERS:", mapK)
+	chain.summarizeMAPBestK(matStrings, mapK)
 }
 
-func (chain *UVNDPPGibbs) summarize(matStrings map[*mat.Dense]string) map[*mat.Dense]int {
+func (chain *UVNDPPGibbs) summarizeMAPBestK(matStrings map[*mat.Dense]string, K int) map[*mat.Dense]int {
+	counts := make(map[*mat.Dense]int)
+	//var seen []*mat.Dense
+	//seen = append(seen, assoc[0])
+	start := false
+	var curK int
+	for m, st := range matStrings {
+		curK = 0
+		for _, char := range st {
+			if char == 59 {
+				curK++
+			}
+		}
+		if curK != K {
+			continue
+		}
+		if start == false {
+			//seen = append(seen, m)
+			counts[m] = 1
+			start = true
+			continue
+		}
+		unique := true
+		for checkMat := range counts {
+			equal := mat.Equal(m, checkMat)
+			if equal == true {
+				counts[checkMat]++
+				//num++
+				unique = false
+				break
+			}
+		}
+		if unique == true {
+			counts[m] = 1
+		}
+	}
+	freq := 0
+	var MAP string
+	for i, num := range counts {
+		clusterString := matStrings[i]
+		//if num != 1 {
+		//	fmt.Println(i, clusterString, num)
+		//}
+		if num > freq {
+			MAP = clusterString
+			freq = num
+		}
+	}
+	fmt.Println(MAP, freq)
+	return counts
+}
+
+func (chain *UVNDPPGibbs) summarizeMAP(matStrings map[*mat.Dense]string) map[*mat.Dense]int {
 	counts := make(map[*mat.Dense]int)
 	//var seen []*mat.Dense
 	//seen = append(seen, assoc[0])

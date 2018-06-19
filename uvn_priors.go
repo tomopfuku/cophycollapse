@@ -5,7 +5,7 @@ import (
 )
 
 //InitNGPrior will initialize the prior on the  matrix and BM mean
-func InitNGPrior(mu0 float64, k0 float64, alpha0, beta0 float64) *NormalGammaPrior {
+func InitNGPrior(mu0, k0, alpha0, beta0 float64) *NormalGammaPrior {
 	p := new(NormalGammaPrior)
 	p.Mu0 = mu0
 	p.K0 = k0
