@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"math/rand"
 	"os"
 	"strings"
@@ -89,8 +90,19 @@ func Max(l map[int][]int) (biggest int) {
 	return
 }
 
+//MaxClustLabF64 returns the maximum value in a map of ints used like a set
+func MaxClustLabF64(l map[int]float64) (biggest int) {
+	biggest = -10000000
+	for i := range l {
+		if i > biggest {
+			biggest = i
+		}
+	}
+	return
+}
+
 //MaxClustLab returns the maximum value in a map of ints used like a set
-func MaxClustLab(l map[int]float64) (biggest int) {
+func MaxClustLab(l map[int]*big.Float) (biggest int) {
 	biggest = -10000000
 	for i := range l {
 		if i > biggest {
@@ -111,8 +123,20 @@ func MeanInt(v []int) int {
 	for _, i := range v {
 		sum += int(i)
 	}
-	sum = sum / len(v)
-	return sum
+	//fmt.Println(float64(sum) / float64(len(v)))
+	mean := int(math.Round(float64(sum) / float64(len(v))))
+	return mean
+}
+
+//Mean wil calculate the mean from a slice of floats
+func Mean(v []float64) float64 {
+	sum := 0.
+	for _, i := range v {
+		sum += i
+	}
+	//fmt.Println(float64(sum) / float64(len(v)))
+	mean := sum / float64(len(v))
+	return mean
 }
 
 //SetIdentityMatrix will return an identiy matrix with dimensions ntax,ntax

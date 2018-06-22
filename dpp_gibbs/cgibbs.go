@@ -65,9 +65,13 @@ func main() {
 	*/
 	//vcv := cophycollapse.SetIdentityMatrix(ntax)
 	nodes := tree.PreorderArray()
+	/*1
 	dist := cophycollapse.DM(nodes)
-	fmt.Println(dist.MatSites[0])
-	ngprior := cophycollapse.InitNGPrior(0.0, 2., 1.25, 2.)
+	for i, v := range dist.MatSites {
+		fmt.Println(i, cophycollapse.Mean(v))
+	}
+	*/
+	ngprior := cophycollapse.InitNGPrior(0.0, 5.0, 0.5, 0.1)
 	chain := cophycollapse.InitUVNGibbs(nodes, ngprior, *genArg, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, *clustArg, treeOutFile, logOutFile)
 	start := time.Now()
 	chain.Run()

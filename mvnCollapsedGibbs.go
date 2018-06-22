@@ -85,7 +85,7 @@ func (chain *DPPGibbs) collapsedSiteClusterUpdate(site int, siteClusterLab int) 
 		clustS[k] = S
 		clustDet[k] = SnD
 	}
-	newClustLab := MaxClustLab(clustProbs) + 1
+	newClustLab := MaxClustLabF64(clustProbs) + 1
 	newClustProb := chain.Alpha / (float64(chain.Aln.NSites) + chain.Alpha - 1) * chain.Prior.PPDensity
 	//fmt.Println(chain.Prior.PPDensity)
 	clustProbs[newClustLab] = newClustProb

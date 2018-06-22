@@ -1,0 +1,5 @@
+There are currently some problems with underflow under certain combinations of hyperprior scale and data scale where the probabilities when 'reseating' sites rounds to 0. Can presumably just fix using math.Big, but haven't done so yet.
+
+Multivariate version of the clustering model is still nonfunctional.
+
+Compiling and running the main now requires Go version > 1.10. 

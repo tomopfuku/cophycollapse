@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/big"
 	"math/rand"
 	"os"
 	"strconv"
@@ -106,10 +107,11 @@ func (chain *UVNDPPGibbs) Run() {
 	}
 	f.Close()
 	mapK := MeanInt(KC)
-	fmt.Println("MAP NUMBER OF CLUSTERS:", mapK)
+	fmt.Println("MEAN NUMBER OF CLUSTERS:", mapK)
 	chain.summarizeMAPBestK(matStrings, mapK)
 }
 
+//this will take the MAP clustering given the mean # of clusters
 func (chain *UVNDPPGibbs) summarizeMAPBestK(matStrings map[*mat.Dense]string, K int) map[*mat.Dense]int {
 	counts := make(map[*mat.Dense]int)
 	//var seen []*mat.Dense
@@ -119,7 +121,7 @@ func (chain *UVNDPPGibbs) summarizeMAPBestK(matStrings map[*mat.Dense]string, K 
 	for m, st := range matStrings {
 		curK = 0
 		for _, char := range st {
-			if char == 59 {
+			if char == 59 { //count number of semicolons (ASCII character 59) to get the number of clusters
 				curK++
 			}
 		}
@@ -256,28 +258,28 @@ func (chain *UVNDPPGibbs) collapsedSiteClusterUpdate(site int, siteClusterLab in
 		}
 		siteCluster.Sites = newSlice
 	}
-	sum := 0.
-	clustProbs := make(map[int]float64)
+	sum := big.NewFloat(0.)
+	clustProbs := make(map[int]*big.Float)
 	for k, v := range chain.Clusters {
 		prob := chain.calcClusterProb(k, v, site)
 		//fmt.Println(prob)
-		sum += prob
+		//sum += prob
+		sum.Add(sum, prob)
 		clustProbs[k] = prob
 	}
 	newClustLab := MaxClustLab(clustProbs) + 1
 	g0 := chain.calcNewClusterProb(site)
-	newClustProb := chain.Alpha / (chain.Dist.NSites + chain.Alpha - 1.) * g0 //chain.Prior.PPDensity
+	newClustProb := big.NewFloat(chain.Alpha / (chain.Dist.NSites + chain.Alpha - 1.) * g0) //chain.Prior.PPDensity
 	clustProbs[newClustLab] = newClustProb
-	sum += newClustProb
+	sum.Add(sum, newClustProb)
 	r := rand.Float64()
 	cumprob := 0.
 	newCluster := -1
 	for k, v := range clustProbs {
 		//clustProbs[k] = v / sum
-		if v == 0. {
-			continue
-		}
-		cumprob += v / sum
+		quo := new(big.Float).Quo(v, sum)
+		cur, _ := quo.Float64()
+		cumprob += cur
 		if cumprob > r {
 			newCluster = k
 			break
@@ -340,9 +342,10 @@ func (chain *UVNDPPGibbs) calcNewClusterProb(testsite int) (pp float64) {
 	return
 }
 
-func (chain *UVNDPPGibbs) calcClusterProb(clusLab int, clust *UVNLike, testsite int) (pp float64) {
+func (chain *UVNDPPGibbs) calcClusterProb(clusLab int, clust *UVNLike, testsite int) *big.Float {
 	var knPlus1, betaPlus1, alphaPlus1 float64
-	pp = 1.
+	//pp := 1.
+	bigpp := big.NewFloat(1.)
 	for i, trait := range chain.Dist.MatSites[testsite] {
 		alphaN := clust.AlphaN[i]
 		kN := clust.KN[i]
@@ -354,17 +357,28 @@ func (chain *UVNDPPGibbs) calcClusterProb(clusLab int, clust *UVNLike, testsite 
 		q1t = q1t * float64(s)
 		q1b, s := math.Lgamma(clust.AlphaN[i])
 		q1b = q1b * float64(s)
-		q1 := math.Exp(q1t - q1b)
+		q1 := q1t - q1b
 		q2t := math.Pow(betaN, alphaN)
 		q2b := math.Pow(betaPlus1, alphaPlus1)
 		q2 := q2t / q2b
 		q3 := math.Sqrt(kN / knPlus1)
-		pp *= q1 * q2 * q3 * 0.3989422804014327
+		//bq1 := big.NewFloat(q1)
+		//bq2 := big.NewFloat(q2)
+		//bq3 := big.NewFloat(q3)
+		pp := q1 + math.Log(q2) + math.Log(q3) + 35.92242295470006
+		//fmt.Println(math.Exp(pp))
+		//os.Exit(0)
+		//bigpp.Mul(bigpp, bq1)
+		//bigpp.Mul(bigpp, bq2)
+		//bigpp.Mul(bigpp, bq3)
+		bigpp.Mul(bigpp, big.NewFloat(math.Exp(pp)))
 		//muPlus1 = append(muPlus1, clust.MuN[i])
 		//TODO: need to finish typing the calculation of these parameters and calc the PP density
 	}
+	//fmt.Println(bigpp, pp)
+	//os.Exit(0)
 
-	return
+	return bigpp
 }
 
 func (chain *UVNDPPGibbs) startingClusters() {
