@@ -22,12 +22,13 @@ func main() {
 	treeArg := flag.String("t", "", "input tree")
 	traitArg := flag.String("m", "", "continuous traits")
 	genArg := flag.Int("gen", 500000, "number of MCMC generations to run")
+	kArg := flag.Int("K", 2, "number of clusters")
 	printFreqArg := flag.Int("pr", 50, "Frequency with which to print to the screen")
-	sampFreqArg := flag.Int("samp", 1, "Frequency with which to sample from the chain")
+	//sampFreqArg := flag.Int("samp", 1, "Frequency with which to sample from the chain")
 	runNameArg := flag.String("o", "cophycollapse", "specify the prefix for outfile names")
-	threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
-	workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
-	clustArg := flag.Float64("a", 1.0, "clumpiness parameter for trait clustering algorithm")
+	//threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
+	//workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
+	//clustArg := flag.Float64("a", 1.0, "clumpiness parameter for trait clustering algorithm")
 	flag.Parse()
 	f, err := os.Create("profile.prof")
 	if err != nil {
@@ -53,29 +54,10 @@ func main() {
 	logOutFile := *runNameArg
 	logOutFile += ".mcmc"
 
-	/*
-		var mult bool
-		if *threadArg == 1 {
-			mult = false
-		} else if *threadArg > 1 {
-			mult = true
-		} else {
-			fmt.Println("Please pick a valid number of cores to use for the run.")
-			os.Exit(0)
-		}
-	*/
-	//vcv := cophycollapse.SetIdentityMatrix(ntax)
-	nodes := tree.PreorderArray()
-	/*1
-	dist := cophycollapse.DM(nodes)
-	for i, v := range dist.MatSites {
-		fmt.Println(i, cophycollapse.Mean(v))
-	}
-	*/
-	ngprior := cophycollapse.InitNGPrior(0.0, 10.0, 0.05, 0.1)
-	chain := cophycollapse.InitUVNGibbs(nodes, ngprior, *genArg, *printFreqArg, *sampFreqArg, *threadArg, *workersArg, *clustArg, treeOutFile, logOutFile)
+	search := cophycollapse.InitGreedySearch(tree, *genArg, *kArg, *printFreqArg)
+	fmt.Println(search.ClusterString())
 	start := time.Now()
-	chain.Run()
+	search.Run()
 	elapsed := time.Since(start)
-	fmt.Println("COMPLETED ", *genArg, "COLLAPSED GIBBS SIMULATIONS IN ", elapsed)
+	fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 }
