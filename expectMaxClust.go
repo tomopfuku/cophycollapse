@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-type ClustSearch struct {
+type EMClustSearch struct {
 	Tree            *Node
 	PreorderNodes   []*Node
 	Clusters        map[int]*Cluster
@@ -24,9 +24,10 @@ type ClustSearch struct {
 type Cluster struct {
 	Sites         []int
 	BranchLengths []float64
+	LogLike       float64
 }
 
-func (s *ClustSearch) Run() {
+func (s *EMClustSearch) Run() {
 	for i := 0; i < s.Gen; i++ {
 		if i%s.PrintFreq == 0 {
 			fmt.Println("ITERATION", i)
@@ -37,20 +38,20 @@ func (s *ClustSearch) Run() {
 	fmt.Println(len(s.Clusters), s.ClusterString())
 }
 
-func (s *ClustSearch) updateClusterBranchLengths() {
+func (s *EMClustSearch) updateClusterBranchLengths() {
 	for _, v := range s.Clusters {
 		ClusterMissingTraitsEM(s.Tree, v, 10)
 	}
 }
 
-func (s *ClustSearch) updateClusters() {
+func (s *EMClustSearch) updateClusters() {
 	for k, v := range s.SiteAssignments {
 		s.siteClusterUpdate(k, v)
 	}
 }
 
 //ClusterString will return a string of the current set of clusters
-func (s *ClustSearch) ClusterString() string {
+func (s *EMClustSearch) ClusterString() string {
 	var buffer bytes.Buffer
 	cSet := s.Clusters
 	for _, like := range cSet {
@@ -68,7 +69,7 @@ func (s *ClustSearch) ClusterString() string {
 	return buffer.String()
 }
 
-func (s *ClustSearch) siteClusterUpdate(site int, siteClusterLab int) {
+func (s *EMClustSearch) siteClusterUpdate(site int, siteClusterLab int) {
 	siteCluster := s.Clusters[siteClusterLab]
 	bestLL := -1000000000000.
 	var bestClustLab int
@@ -104,8 +105,8 @@ func (s *ClustSearch) siteClusterUpdate(site int, siteClusterLab int) {
 	}
 }
 
-func InitGreedySearch(tree *Node, gen int, k int, pr int) *ClustSearch {
-	s := new(ClustSearch)
+func InitEMSearch(tree *Node, gen int, k int, pr int) *EMClustSearch {
+	s := new(EMClustSearch)
 	s.Tree = tree
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
@@ -117,7 +118,7 @@ func InitGreedySearch(tree *Node, gen int, k int, pr int) *ClustSearch {
 
 /*
 this gives starting clusters when K is unknown (for basically a prior-free DPP-style mixture model)
-func (search *ClustSearch) startingClusters() {
+func (search *EMClustSearch) startingClusters() {
 	clus := make(map[int]*Cluster)
 	lab := 0
 	siteClust := make(map[int]int)
@@ -134,7 +135,7 @@ func (search *ClustSearch) startingClusters() {
 }
 */
 
-func (search *ClustSearch) startingClusters() {
+func (search *EMClustSearch) startingClusters() {
 	clus := make(map[int]*Cluster)
 	siteClust := make(map[int]int)
 	var clustLabs []int

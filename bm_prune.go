@@ -37,6 +37,30 @@ func BMPruneRooted(n *Node) {
 	}
 }
 
+//BMPruneRootedSub will prune BM branch lens and PICs down to a rooted node
+//root node should be a real (ie. bifurcating) root
+func BMPruneRootedSub(n *Node, sites []int) {
+	for _, chld := range n.CHLD {
+		BMPruneRootedSub(chld, sites)
+	}
+	n.PRNLEN = n.LEN
+	nchld := len(n.CHLD)
+	if nchld != 0 { //&& n.MRK == false {
+		var tempChar float64
+		if nchld != 2 {
+			fmt.Println("This BM pruning algorithm should only be perfomed on fully bifurcating trees/subtrees! Check for multifurcations and singletons.")
+		}
+		c0 := n.CHLD[0]
+		c1 := n.CHLD[1]
+		bot := ((1.0 / c0.PRNLEN) + (1.0 / c1.PRNLEN))
+		n.PRNLEN += 1.0 / bot
+		for i := range sites { //n.CHLD[0].CONTRT {
+			tempChar = (((1 / c0.PRNLEN) * c1.CONTRT[i]) + ((1 / c1.PRNLEN) * c0.CONTRT[i])) / bot
+			n.CONTRT[i] = tempChar
+		}
+	}
+}
+
 //BMPruneRootedSingle will prune BM branch lens and calculate PIC of a single trait down to a rooted node
 //root node should be a real (ie. bifurcating) root
 func BMPruneRootedSingle(n *Node, i int) {
@@ -101,6 +125,18 @@ func MissingTraitsEM(tree *Node, niter int) {
 	}
 }
 
+//GreedyIterateLengthsMissing will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
+func GreedyIterateLengthsMissing(tree *Node, sites []int, niter int) {
+	AssertUnrootedTree(tree)
+	nodes := tree.PreorderArray()
+	InitMissingValues(nodes)
+	rnodes := tree.PreorderArray()
+	for i := 0; i < niter; i++ {
+		CalcExpectedTraitsSub(tree, sites)         //calculate Expected trait values
+		calcBMLengthsSubSites(tree, rnodes, sites) //maximize likelihood of branch lengths
+	}
+}
+
 //ClusterMissingTraitsEM will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
 func ClusterMissingTraitsEM(tree *Node, cluster *Cluster, niter int) {
 	AssertUnrootedTree(tree)
@@ -108,7 +144,7 @@ func ClusterMissingTraitsEM(tree *Node, cluster *Cluster, niter int) {
 	InitMissingValues(nodes)
 	rnodes := tree.PreorderArray()
 	for i := 0; i < niter; i++ {
-		CalcExpectedTraits(tree)                           //calculate Expected trait values
+		CalcExpectedTraitsSub(tree, cluster.Sites)         //calculate Expected trait values
 		calcBMLengthsSubSites(tree, rnodes, cluster.Sites) //maximize likelihood of branch lengths
 	}
 	for _, n := range rnodes {
@@ -127,7 +163,7 @@ func calcBMLengthsSubSites(tree *Node, rnodes []*Node, sites []int) {
 			lnode = ind
 		}
 		for _, cn := range tree.CHLD {
-			BMPruneRooted(cn)
+			BMPruneRootedSub(cn, sites)
 		}
 		TritomySubML(tree, sites)
 	}
