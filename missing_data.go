@@ -69,6 +69,9 @@ func CalcExpectedTraitsSub(tree *Node, sites []int) {
 							if cn2 != cn {
 								childCount++
 								BMPruneRootedSingle(cn2, traitIndex) // prune root to 3-tip tree
+								if cn2.PRNLEN == 0. {
+									cn2.PRNLEN = 0.0001
+								}
 								bot += 1. / cn2.PRNLEN
 								if childCount == 2 {
 									top = ((1. / cn2.PRNLEN) * ltrait) + ((1. / llen) * cn2.CONTRT[traitIndex])
