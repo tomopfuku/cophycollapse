@@ -102,7 +102,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 			} else if clen < 21 && clen > 11 {
 				GreedyIterateLengthsMissing(s.Tree, proposedSites, 20)
 			} else if clen > 21 {
-				GreedyIterateLengthsMissing(s.Tree, proposedSites, 3)
+				GreedyIterateLengthsMissing(s.Tree, proposedSites, 40)
 			}
 			clustll := 0.0
 			for _, site := range proposedSites {
@@ -181,6 +181,7 @@ func (search *HCSearch) startingClusters() {
 	}
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
+	search.NumTraits = math.Log(float64(len(clus))) //* float64(tipcount)
 	search.CurrentAIC = search.calcAIC()
 	tipcount := 0
 	for _, n := range search.PreorderNodes {
@@ -188,7 +189,6 @@ func (search *HCSearch) startingClusters() {
 			tipcount++
 		}
 	}
-	search.NumTraits = math.Log(float64(len(clus))) //* float64(tipcount)
 }
 
 //ClusterString will return a string of the current set of clusters

@@ -77,7 +77,15 @@ func BMPruneRootedSingle(n *Node, i int) {
 		c1 := n.CHLD[1]
 		bot := ((1.0 / c0.PRNLEN) + (1.0 / c1.PRNLEN))
 		n.PRNLEN += 1.0 / bot
+		if n.PRNLEN == 0. {
+			n.PRNLEN = 0.0001
+		}
 		tempCharacter := (((1 / c0.PRNLEN) * c1.CONTRT[i]) + ((1 / c1.PRNLEN) * c0.CONTRT[i])) / bot
+		if math.IsNaN(tempCharacter) {
+			fmt.Println(c0.PRNLEN, c1.PRNLEN, c0.CONTRT[i], c1.CONTRT[i], c0.NAME, c1.NAME)
+			fmt.Println("you're encountering zero branch lengths while pruning to the root on trait", i, "in the matrix")
+			os.Exit(0)
+		}
 		n.CONTRT[i] = tempCharacter
 	}
 }
@@ -614,13 +622,13 @@ func TritomySubML(tree *Node, sites []int) {
 	sumV2 = sumV2 - (tree.CHLD[1].PRNLEN - tree.CHLD[1].LEN)
 	sumV3 = sumV3 - (tree.CHLD[2].PRNLEN - tree.CHLD[2].LEN)
 
-	if sumV1 < 0. {
+	if sumV1 <= 0. {
 		sumV1 = 0.0001
 	}
-	if sumV2 < 0. {
+	if sumV2 <= 0. {
 		sumV2 = 0.0001
 	}
-	if sumV3 < 0. {
+	if sumV3 <= 0. {
 		sumV3 = 0.0001
 	}
 	tree.CHLD[0].LEN = sumV1
@@ -684,13 +692,13 @@ func TritomyML(tree *Node) {
 	sumV1 = sumV1 - (tree.CHLD[0].PRNLEN - tree.CHLD[0].LEN)
 	sumV2 = sumV2 - (tree.CHLD[1].PRNLEN - tree.CHLD[1].LEN)
 	sumV3 = sumV3 - (tree.CHLD[2].PRNLEN - tree.CHLD[2].LEN)
-	if sumV1 < 0. {
+	if sumV1 <= 0. {
 		sumV1 = 0.0001
 	}
-	if sumV2 < 0. {
+	if sumV2 <= 0. {
 		sumV2 = 0.0001
 	}
-	if sumV3 < 0. {
+	if sumV3 <= 0. {
 		sumV3 = 0.0001
 	}
 	tree.CHLD[0].LEN = sumV1

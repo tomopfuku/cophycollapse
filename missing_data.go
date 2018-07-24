@@ -1,5 +1,11 @@
 package cophycollapse
 
+import (
+	"fmt"
+	"math"
+	"os"
+)
+
 //InitMissingValues will find the missing sites in a data matrix and plug in values corresponding to the mean of the remaining sites
 func InitMissingValues(tree []*Node) {
 	means := CalcSiteMeans(tree)
@@ -69,12 +75,17 @@ func CalcExpectedTraitsSub(tree *Node, sites []int) {
 							if cn2 != cn {
 								childCount++
 								BMPruneRootedSingle(cn2, traitIndex) // prune root to 3-tip tree
+								if math.IsNaN(cn2.PRNLEN) {
+									fmt.Println(traitIndex, cn.NAME, cn2.PRNLEN, cn2.CONTRT)
+									os.Exit(0)
+								}
 								if cn2.PRNLEN == 0. {
 									cn2.PRNLEN = 0.0001
 								}
 								bot += 1. / cn2.PRNLEN
 								if childCount == 2 {
 									top = ((1. / cn2.PRNLEN) * ltrait) + ((1. / llen) * cn2.CONTRT[traitIndex])
+									//fmt.Println(cn2.CONTRT[traitIndex])
 									break
 								}
 								ltrait = cn2.CONTRT[traitIndex]
@@ -82,6 +93,11 @@ func CalcExpectedTraitsSub(tree *Node, sites []int) {
 							}
 						}
 						expect = top / bot
+						if math.IsNaN(expect) {
+							fmt.Println("Encountered error when performing data imputation for branch length calculation")
+							fmt.Println(traitIndex, cn.NAME, top, bot)
+							os.Exit(0)
+						}
 						cn.CONTRT[traitIndex] = expect
 					}
 				}
