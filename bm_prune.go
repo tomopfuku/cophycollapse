@@ -54,6 +54,10 @@ func BMPruneRootedSub(n *Node, sites []int) {
 		c1 := n.CHLD[1]
 		bot := ((1.0 / c0.PRNLEN) + (1.0 / c1.PRNLEN))
 		n.PRNLEN += 1.0 / bot
+		if math.IsNaN(n.PRNLEN) {
+			fmt.Println(c0.NAME, c0.PRNLEN, c1.NAME, c1.PRNLEN, sites)
+			os.Exit(0)
+		}
 		for i := range sites { //n.CHLD[0].CONTRT {
 			tempChar = (((1 / c0.PRNLEN) * c1.CONTRT[i]) + ((1 / c1.PRNLEN) * c0.CONTRT[i])) / bot
 			n.CONTRT[i] = tempChar
@@ -120,8 +124,8 @@ func IterateBMLengths(tree *Node, niter int) {
 //MissingTraitsEM will iteratively calculate the ML branch lengths for a particular topology
 func MissingTraitsEM(tree *Node, niter int) {
 	AssertUnrootedTree(tree)
-	nodes := tree.PreorderArray()
-	InitMissingValues(nodes)
+	//nodes := tree.PreorderArray()
+	//InitMissingValues(nodes)
 	itercnt := 0
 	for {
 		CalcExpectedTraits(tree) //calculate Expected trait values
@@ -136,8 +140,8 @@ func MissingTraitsEM(tree *Node, niter int) {
 //GreedyIterateLengthsMissing will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
 func GreedyIterateLengthsMissing(tree *Node, sites []int, niter int) {
 	AssertUnrootedTree(tree)
-	nodes := tree.PreorderArray()
-	InitMissingValues(nodes)
+	//nodes := tree.PreorderArray()
+	//InitMissingValues(nodes)
 	rnodes := tree.PreorderArray()
 	for i := 0; i < niter; i++ {
 		CalcExpectedTraitsSub(tree, sites)         //calculate Expected trait values
@@ -148,8 +152,8 @@ func GreedyIterateLengthsMissing(tree *Node, sites []int, niter int) {
 //ClusterMissingTraitsEM will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
 func ClusterMissingTraitsEM(tree *Node, cluster *Cluster, niter int) {
 	AssertUnrootedTree(tree)
-	nodes := tree.PreorderArray()
-	InitMissingValues(nodes)
+	//nodes := tree.PreorderArray()
+	//InitMissingValues(nodes)
 	rnodes := tree.PreorderArray()
 	for i := 0; i < niter; i++ {
 		CalcExpectedTraitsSub(tree, cluster.Sites)         //calculate Expected trait values
@@ -700,6 +704,11 @@ func TritomyML(tree *Node) {
 	}
 	if sumV3 <= 0. {
 		sumV3 = 0.0001
+	}
+	//fmt.Println(tree.CHLD[0].NAME, sumV1, tree.CHLD[1].NAME, sumV2, tree.CHLD[2].NAME, sumV3)
+	if math.IsNaN(sumV1) || math.IsNaN(sumV2) || math.IsNaN(sumV3) {
+		fmt.Println(tree.CHLD[0].NAME, sumV1, tree.CHLD[1].NAME, sumV2, tree.CHLD[2].NAME, sumV3)
+		os.Exit(0)
 	}
 	tree.CHLD[0].LEN = sumV1
 	tree.CHLD[1].LEN = sumV2

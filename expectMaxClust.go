@@ -40,6 +40,9 @@ func (s *EMClustSearch) Run() {
 
 func (s *EMClustSearch) updateClusterBranchLengths() {
 	for _, v := range s.Clusters {
+		if len(v.Sites) == 0 {
+			continue
+		}
 		ClusterMissingTraitsEM(s.Tree, v, 10)
 	}
 }
@@ -151,6 +154,12 @@ func (search *EMClustSearch) startingClusters() {
 		siteClust[k] = lab
 	}
 	for _, cur := range clus {
+		if len(cur.Sites) == 0 {
+			for range search.PreorderNodes {
+				cur.BranchLengths = append(cur.BranchLengths, rand.Float64())
+			}
+			continue
+		}
 		ClusterMissingTraitsEM(search.Tree, cur, 10)
 	}
 	search.Clusters = clus
