@@ -47,7 +47,8 @@ func main() {
 		n.LEN = r
 	}
 	cophycollapse.InitMissingValues(tree.PreorderArray())
-	cophycollapse.MissingTraitsEM(tree, 10) //going to optimize branch lengths to set mean parameter for tree length in dirichlet prior
+	cophycollapse.MissingTraitsEM(tree, 100) //going to optimize branch lengths to set mean parameter for tree length in dirichlet prior
+	fmt.Println("Starting tree AIC/BIC:", cophycollapse.CalcTreeAIC(tree, *critArg))
 	//fmt.Println(tree.Newick(true))
 	treeOutFile := *runNameArg
 	treeOutFile += ".clusters"
@@ -84,7 +85,7 @@ func main() {
 		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, true, *kArg)
 		fmt.Println(search.ClusterString())
 		start := time.Now()
-		search.Run()
+		search.PerturbedRun()
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 	}

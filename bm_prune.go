@@ -58,7 +58,7 @@ func BMPruneRootedSub(n *Node, sites []int) {
 			fmt.Println(c0.NAME, c0.PRNLEN, c1.NAME, c1.PRNLEN, sites)
 			os.Exit(0)
 		}
-		for i := range sites { //n.CHLD[0].CONTRT {
+		for _, i := range sites { //n.CHLD[0].CONTRT {
 			tempChar = (((1 / c0.PRNLEN) * c1.CONTRT[i]) + ((1 / c1.PRNLEN) * c0.CONTRT[i])) / bot
 			n.CONTRT[i] = tempChar
 		}

@@ -67,7 +67,7 @@ func CalcExpectedTraitsSub(tree *Node, sites []int) {
 		}
 		for _, cn := range tree.CHLD {
 			if len(cn.CHLD) == 0 { // visit any leaves subtending from newroot
-				for traitIndex := range sites {
+				for _, traitIndex := range sites {
 					if cn.MIS[traitIndex] == true { // check if trait is missing and calculate expectation for each missing value
 						bot = 0.
 						childCount := 0

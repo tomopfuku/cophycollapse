@@ -267,7 +267,7 @@ func (chain *UVNDPPGibbs) collapsedSiteClusterUpdate(site int, siteClusterLab in
 		sum.Add(sum, prob)
 		clustProbs[k] = prob
 	}
-	newClustLab := MaxClustLab(clustProbs) + 1
+	newClustLab := MaxClustLabBig(clustProbs) + 1
 	g0 := chain.calcNewClusterProb(site)
 	newClustProb := big.NewFloat(chain.Alpha / (chain.Dist.NSites + chain.Alpha - 1.) * g0) //chain.Prior.PPDensity
 	clustProbs[newClustLab] = newClustProb

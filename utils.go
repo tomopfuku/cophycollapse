@@ -90,6 +90,20 @@ func Max(l map[int][]int) (biggest int) {
 	return
 }
 
+func CalcTreeAIC(tree *Node, crit int) (aic float64) {
+	ll := CalcUnrootedLogLike(tree, true)
+	preArray := tree.PreorderArray()
+	params := float64(len(preArray) - 1)
+
+	if crit == 0 {
+		aic = (2. * params) - (2. * ll)
+	} else if crit == 1 {
+		numTraits := float64(len(tree.CONTRT))
+		aic = (numTraits * params) - (2. * ll)
+	}
+	return
+}
+
 //MaxClustLabF64 returns the maximum value in a map of ints used like a set
 func MaxClustLabF64(l map[int]float64) (biggest int) {
 	biggest = -10000000
@@ -101,8 +115,19 @@ func MaxClustLabF64(l map[int]float64) (biggest int) {
 	return
 }
 
+//MaxClustLabF64 returns the maximum value in a map of ints used like a set
+func MaxClustLab(l map[int]*Cluster) (biggest int) {
+	biggest = -10000000
+	for i := range l {
+		if i > biggest {
+			biggest = i
+		}
+	}
+	return
+}
+
 //MaxClustLab returns the maximum value in a map of ints used like a set
-func MaxClustLab(l map[int]*big.Float) (biggest int) {
+func MaxClustLabBig(l map[int]*big.Float) (biggest int) {
 	biggest = -10000000
 	for i := range l {
 		if i > biggest {
