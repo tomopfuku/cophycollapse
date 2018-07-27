@@ -51,9 +51,9 @@ func main() {
 	fmt.Println("Starting tree AIC/BIC:", cophycollapse.CalcTreeAIC(tree, *critArg))
 	//fmt.Println(tree.Newick(true))
 	treeOutFile := *runNameArg
-	treeOutFile += ".clusters"
-	logOutFile := *runNameArg
-	logOutFile += ".mcmc"
+	treeOutFile += ".trees"
+	//logOutFile := *runNameArg
+	//logOutFile += ".mcmc"
 	if *searchArg == 0 {
 		search := cophycollapse.InitEMSearch(tree, *genArg, *kArg, *printFreqArg)
 		fmt.Println(search.ClusterString())
@@ -62,10 +62,10 @@ func main() {
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 	} else if *searchArg == 1 {
-		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, false, *kArg)
+		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, false, *kArg, treeOutFile)
 		fmt.Println(search.ClusterString())
 		start := time.Now()
-		search.Run()
+		search.PerturbedRun()
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 	} else if *searchArg == 2 {
@@ -75,14 +75,14 @@ func main() {
 		search.Run()
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
-		ghc := cophycollapse.TransferGreedyHC(search.Tree, search.Gen, search.PrintFreq, *critArg, search.Clusters, search.SiteAssignments)
+		ghc := cophycollapse.TransferGreedyHC(search.Tree, search.Gen, search.PrintFreq, *critArg, search.Clusters, search.SiteAssignments, treeOutFile)
 		start = time.Now()
-		ghc.Run()
+		ghc.PerturbedRun()
 		elapsed = time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 
 	} else if *searchArg == 3 {
-		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, true, *kArg)
+		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, true, *kArg, treeOutFile)
 		fmt.Println(search.ClusterString())
 		start := time.Now()
 		search.PerturbedRun()

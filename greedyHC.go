@@ -1,8 +1,10 @@
 package cophycollapse
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -17,7 +19,7 @@ type HCSearch struct {
 	Gen             int
 	Threads         int
 	Workers         int
-	ClustOutFile    string
+	TreeOutFile     string
 	LogOutFile      string
 	K               int
 	PrintFreq       int
@@ -27,6 +29,12 @@ type HCSearch struct {
 }
 
 func (s *HCSearch) Run() {
+	f, err := os.Create(s.TreeOutFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	w := bufio.NewWriter(f)
+
 	count := 0
 	for {
 		clcount := len(s.Clusters)
@@ -45,11 +53,28 @@ func (s *HCSearch) Run() {
 		}
 	}
 	fmt.Println(s.ClusterString())
+	for _, c := range s.Clusters {
+		for i, n := range s.PreorderNodes {
+			n.LEN = c.BranchLengths[i]
+		}
+		fmt.Fprint(w, s.Tree.Newick(true)+";"+"\n")
+	}
+	err = w.Flush()
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
 }
 
 func (s *HCSearch) PerturbedRun() {
+	f, err := os.Create(s.TreeOutFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	w := bufio.NewWriter(f)
+
 	count := 0
-	var bestClust string
+	var bestTrees, bestClust string
 	bestAIC := 1000000000.
 	for {
 		clcount := len(s.Clusters)
@@ -61,12 +86,19 @@ func (s *HCSearch) PerturbedRun() {
 		}
 		if quit == true {
 			//if math.Abs(bestAIC-s.CurrentAIC) < 4. || count > 1000 {
-			if count > s.Gen {
-				break
-			}
 			if s.CurrentAIC < bestAIC {
 				bestAIC = s.CurrentAIC
 				bestClust = s.ClusterString()
+				bestTrees = ""
+				for _, c := range s.Clusters {
+					for i, n := range s.PreorderNodes {
+						n.LEN = c.BranchLengths[i]
+					}
+					bestTrees += s.Tree.Newick(true) + ";" + "\n"
+				}
+			}
+			if count > s.Gen {
+				break
 			}
 			fmt.Println(bestAIC, bestClust)
 			fmt.Println("Hill climb got stuck. Perturbing the state and trying again to reduce.")
@@ -80,6 +112,13 @@ func (s *HCSearch) PerturbedRun() {
 		}
 	}
 	fmt.Println(bestAIC, bestClust)
+	fmt.Fprint(w, bestTrees)
+	err = w.Flush()
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
+
 }
 
 func (s *HCSearch) perturbClusters() {
@@ -278,9 +317,10 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 	return
 }
 
-func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int) *HCSearch {
+func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, treefl string) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
+	s.TreeOutFile = treefl
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
 	s.Criterion = crit
@@ -291,13 +331,13 @@ func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int) *HC
 		s.randomStartingClusters()
 	}
 	s.PrintFreq = pr
-
 	return s
 }
 
-func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int) *HCSearch {
+func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, treefl string) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
+	s.TreeOutFile = treefl
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
 	s.Criterion = crit
