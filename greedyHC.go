@@ -19,17 +19,42 @@ type HCSearch struct {
 	Gen             int
 	Threads         int
 	Workers         int
-	TreeOutFile     string
+	RunName         string
 	LogOutFile      string
 	K               int
 	PrintFreq       int
 	CurrentAIC      float64
 	NumTraits       float64
 	Criterion       int
+	SavedConfig     []*SiteConfiguration
+	CurBestAIC      float64
+}
+
+func (s *HCSearch) NewSiteConfig() *SiteConfiguration {
+	config := new(SiteConfiguration)
+	var sitemap = map[int]map[int]bool{}
+	var treemap = map[int]string{}
+	count := 0
+	for _, v := range s.Clusters {
+		sitemap[count] = map[int]bool{}
+		for _, site := range v.Sites {
+			sitemap[count][site] = true
+		}
+		for i, node := range s.PreorderNodes {
+			node.LEN = v.BranchLengths[i]
+		}
+		treemap[count] = s.Tree.Newick(true)
+		count++
+	}
+	config.AIC = s.CurrentAIC
+	config.Sites = sitemap
+	config.ClusterTrees = treemap
+	config.ClusterString = s.ClusterString()
+	return config
 }
 
 func (s *HCSearch) Run() {
-	f, err := os.Create(s.TreeOutFile)
+	f, err := os.Create(s.RunName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -66,36 +91,66 @@ func (s *HCSearch) Run() {
 	f.Close()
 }
 
-func (s *HCSearch) PerturbedRun() {
-	f, err := os.Create(s.TreeOutFile)
-	if err != nil {
-		log.Fatal(err)
+func (s *HCSearch) CalcRelLikes() (denom float64) {
+	denom = 0.
+	var deltaAICi float64
+	for _, c := range s.SavedConfig {
+		if c.AIC == s.CurBestAIC {
+			denom += 1.0
+			continue
+		}
+		deltaAICi = c.AIC - s.CurBestAIC
+		denom += math.Exp(-0.5 * deltaAICi)
 	}
-	w := bufio.NewWriter(f)
+	return
+}
 
+func (s *HCSearch) CheckCluster(checkConfig *SiteConfiguration) (keep bool) {
+	keep = true
+	denom := s.CalcRelLikes()
+	relLike := math.Exp(-0.5*checkConfig.AIC - s.CurBestAIC)
+	denom += relLike
+	weight := relLike / denom
+	//fmt.Println("AIC weight:", weight, relLike)
+	if weight < .01 {
+		keep = false
+		return
+	}
+	for _, c := range s.SavedConfig {
+		seen := checkConfig.Equals(c)
+		if seen == true {
+			keep = false
+		}
+		return
+	}
+	return
+}
+
+func (s *HCSearch) PerturbedRun() {
 	count := 0
-	var bestTrees, bestClust string
+	var bestClust string
 	bestAIC := 1000000000.
+
 	for {
 		clcount := len(s.Clusters)
 		fmt.Println(clcount)
-
 		quit := s.bestClusterJoin()
 		if clcount == 1 {
 			quit = true
 		}
 		if quit == true {
-			//if math.Abs(bestAIC-s.CurrentAIC) < 4. || count > 1000 {
+			config := s.NewSiteConfig()
+			var keep bool
 			if s.CurrentAIC < bestAIC {
 				bestAIC = s.CurrentAIC
+				s.CurBestAIC = bestAIC
 				bestClust = s.ClusterString()
-				bestTrees = ""
-				for _, c := range s.Clusters {
-					for i, n := range s.PreorderNodes {
-						n.LEN = c.BranchLengths[i]
-					}
-					bestTrees += s.Tree.Newick(true) + ";" + "\n"
-				}
+				keep = true
+			} else {
+				keep = s.CheckCluster(config)
+			}
+			if keep == true {
+				s.SavedConfig = append(s.SavedConfig, config)
 			}
 			if count > s.Gen {
 				break
@@ -103,7 +158,6 @@ func (s *HCSearch) PerturbedRun() {
 			fmt.Println(bestAIC, bestClust)
 			fmt.Println("Hill climb got stuck. Perturbing the state and trying again to reduce.")
 			s.perturbClusters()
-
 		}
 		count++
 		if count > 10000000000 {
@@ -111,14 +165,76 @@ func (s *HCSearch) PerturbedRun() {
 			os.Exit(0)
 		}
 	}
+	s.RefineSavedClusterings()
+	fmt.Println(len(s.SavedConfig))
+	s.WriteBestClusters()
+	s.WriteClusterTrees()
 	fmt.Println(bestAIC, bestClust)
-	fmt.Fprint(w, bestTrees)
+
+}
+
+func (s *HCSearch) WriteBestClusters() {
+	f, err := os.Create(s.RunName + "_bestClusters")
+	if err != nil {
+		log.Fatal(err)
+	}
+	w := bufio.NewWriter(f)
+	for _, c := range s.SavedConfig {
+		fmt.Fprint(w, strconv.FormatFloat(c.AIC, 'f', 6, 64)+"\t"+c.ClusterString+"\n")
+	}
 	err = w.Flush()
 	if err != nil {
 		log.Fatal(err)
 	}
 	f.Close()
+}
 
+func (s *HCSearch) WriteClusterTrees() {
+	for i, c := range s.SavedConfig {
+		stringCount := strconv.Itoa(i)
+		f, err := os.Create(s.RunName + "_config" + stringCount + "TREES")
+		if err != nil {
+			log.Fatal(err)
+		}
+		w := bufio.NewWriter(f)
+		for lab, sitels := range c.Sites {
+			var buffer bytes.Buffer
+			buffer.WriteString("| ")
+			fmt.Println(sitels)
+			for site := range sitels {
+				cur := strconv.Itoa(site)
+				buffer.WriteString(cur)
+				buffer.WriteString(" ")
+			}
+			buffer.WriteString("| \n\n")
+			fmt.Fprint(w, buffer.String())
+			fmt.Fprint(w, c.ClusterTrees[lab])
+			fmt.Fprint(w, ";\n\n")
+		}
+
+		err = w.Flush()
+		if err != nil {
+			log.Fatal(err)
+		}
+		f.Close()
+	}
+}
+
+func (s *HCSearch) RefineSavedClusterings() {
+	var kept []*SiteConfiguration
+	for _, c := range s.SavedConfig {
+		if c.AIC == s.CurBestAIC {
+			kept = append(kept, c)
+			continue
+		}
+		denom := s.CalcRelLikes()
+		relLike := math.Exp(-0.5*c.AIC - s.CurBestAIC)
+		weight := relLike / denom
+		if weight > 0.01 {
+			kept = append(kept, c)
+		}
+	}
+	s.SavedConfig = kept
 }
 
 func (s *HCSearch) perturbClusters() {
@@ -212,6 +328,9 @@ func (s *HCSearch) calcAIC() (aic float64) {
 		aic = (2. * params) - (2. * ll)
 	} else if s.Criterion == 1 {
 		aic = (s.NumTraits * params) - (2. * ll)
+	} else if s.Criterion == 2 {
+		aic = (2. * params) - (2. * ll)
+		aic -= ((2. * params) * (params + 1.)) / (s.NumTraits - params - 2.)
 	}
 	//aic += (((2. * (params * params)) + (2. * params)) / (s.NumTraits - params - 1.))
 
@@ -229,6 +348,7 @@ func (s *HCSearch) unjoinedLikeParams(exclude1, exclude2 int) (params, ll float6
 		params += blCount
 		ll += c.LogLike
 	}
+	//fmt.Println(ll)
 	//aic = (2. * params) - (2. * ll)
 	return
 }
@@ -265,7 +385,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 			} else if clen <= 25 && clen > 15 {
 				GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
 			} else if clen > 25 {
-				GreedyIterateLengthsMissing(s.Tree, proposedSites, 50)
+				GreedyIterateLengthsMissing(s.Tree, proposedSites, 10)
 			}
 			clustll := 0.0
 			for _, site := range proposedSites {
@@ -280,8 +400,10 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 			} else if s.Criterion == 1 {
 				aic = (s.NumTraits * params) - (2. * ll)
 				//fmt.Println(aic)
+			} else if s.Criterion == 2 {
+				aic = (2. * params) - (2. * ll)
+				aic -= ((2. * params) * (params + 1.)) / (s.NumTraits - params - 2.)
 			}
-			//aic += (((2. * (params * params)) + (2. * params)) / (s.NumTraits - params - 1.))
 			if aic < bestAIC {
 				//fmt.Println(bestAIC)
 				//fmt.Println((((2. * (params * params)) + (2. * params)) / (s.NumTraits - params - 1.)))
@@ -300,7 +422,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 		}
 	}
 	fmt.Println(s.CurrentAIC, bestAIC)
-	if bestAIC < s.CurrentAIC+10. {
+	if bestAIC < s.CurrentAIC { //+10. {
 		for _, site := range best2.Sites {
 			best1.Sites = append(best1.Sites, site)
 			s.SiteAssignments[site] = newK
@@ -317,10 +439,10 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 	return
 }
 
-func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, treefl string) *HCSearch {
+func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
-	s.TreeOutFile = treefl
+	s.RunName = runName
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
 	s.Criterion = crit
@@ -334,10 +456,10 @@ func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, tre
 	return s
 }
 
-func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, treefl string) *HCSearch {
+func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, runName string) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
-	s.TreeOutFile = treefl
+	s.RunName = runName
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
 	s.Criterion = crit
@@ -371,14 +493,15 @@ func (search *HCSearch) startingClusters() {
 	}
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
-	search.NumTraits = math.Log(float64(len(clus))) //* float64(tipcount)
-	search.CurrentAIC = search.calcAIC()
 	tipcount := 0
 	for _, n := range search.PreorderNodes {
 		if len(n.CHLD) == 0 {
 			tipcount++
 		}
 	}
+	search.NumTraits = math.Log(float64(len(clus))) * float64(tipcount)
+	search.CurrentAIC = search.calcAIC()
+
 }
 
 //ClusterString will return a string of the current set of clusters
@@ -395,7 +518,7 @@ func (s *HCSearch) ClusterString() string {
 				buffer.WriteString(",")
 			}
 		}
-		buffer.WriteString(");")
+		buffer.WriteString(")")
 	}
 	return buffer.String()
 }
@@ -445,6 +568,12 @@ func (search *HCSearch) randomStartingClusters() {
 
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
-	search.NumTraits = math.Log(float64(len(clus))) //* float64(tipcount)
+	tipcount := 0
+	for _, n := range search.PreorderNodes {
+		if len(n.CHLD) == 0 {
+			tipcount++
+		}
+	}
+	search.NumTraits = math.Log(float64(len(clus))) * float64(tipcount)
 	search.CurrentAIC = search.calcAIC()
 }

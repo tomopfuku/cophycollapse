@@ -21,12 +21,6 @@ type EMClustSearch struct {
 	PrintFreq       int
 }
 
-type Cluster struct {
-	Sites         []int
-	BranchLengths []float64
-	LogLike       float64
-}
-
 func (s *EMClustSearch) Run() {
 	for i := 0; i < s.Gen; i++ {
 		if i%s.PrintFreq == 0 {

@@ -100,6 +100,10 @@ func CalcTreeAIC(tree *Node, crit int) (aic float64) {
 	} else if crit == 1 {
 		numTraits := float64(len(tree.CONTRT))
 		aic = (numTraits * params) - (2. * ll)
+	} else if crit == 2 {
+		numTraits := float64(len(tree.CONTRT))
+		aic = (2. * params) - (2. * ll)
+		aic -= ((2. * params) * (params + 1.)) / (numTraits - params - 2.)
 	}
 	return
 }

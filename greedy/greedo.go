@@ -51,7 +51,7 @@ func main() {
 	fmt.Println("Starting tree AIC/BIC:", cophycollapse.CalcTreeAIC(tree, *critArg))
 	//fmt.Println(tree.Newick(true))
 	treeOutFile := *runNameArg
-	treeOutFile += ".trees"
+	//treeOutFile += ".trees"
 	//logOutFile := *runNameArg
 	//logOutFile += ".mcmc"
 	if *searchArg == 0 {
