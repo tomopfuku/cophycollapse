@@ -166,7 +166,7 @@ func (s *HCSearch) PerturbedRun() {
 		}
 	}
 	s.RefineSavedClusterings()
-	fmt.Println(len(s.SavedConfig))
+	//fmt.Println(len(s.SavedConfig))
 	s.WriteBestClusters()
 	s.WriteClusterTrees()
 	fmt.Println(bestAIC, bestClust)
@@ -200,7 +200,7 @@ func (s *HCSearch) WriteClusterTrees() {
 		for lab, sitels := range c.Sites {
 			var buffer bytes.Buffer
 			buffer.WriteString("| ")
-			fmt.Println(sitels)
+			//fmt.Println(sitels)
 			for site := range sitels {
 				cur := strconv.Itoa(site)
 				buffer.WriteString(cur)
@@ -238,7 +238,7 @@ func (s *HCSearch) RefineSavedClusterings() {
 }
 
 func (s *HCSearch) perturbClusters() {
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 200; i++ {
 		for k, v := range s.SiteAssignments {
 			s.siteClusterUpdate(k, v)
 		}
@@ -279,6 +279,10 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
 	if len(siteCluster.Sites) != 1 {
 		var sendsites []int
 		sendsites = append(sendsites, site)
+		for _, n := range s.PreorderNodes[1:] {
+			r := rand.Float64()
+			n.LEN = r
+		}
 		GreedyIterateLengthsMissing(s.Tree, sendsites, 50)
 		selfLL := SingleSiteLL(s.Tree, site)
 		if selfLL > bestLL {
