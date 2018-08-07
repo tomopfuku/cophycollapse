@@ -28,6 +28,8 @@ type HCSearch struct {
 	Criterion       int
 	SavedConfig     []*SiteConfiguration
 	CurBestAIC      float64
+	JoinLikes       map[int]map[int]float64
+	SplitGen        int
 }
 
 func (s *HCSearch) NewSiteConfig() *SiteConfiguration {
@@ -130,19 +132,24 @@ func (s *HCSearch) PerturbedRun() {
 	count := 0
 	var bestClust string
 	bestAIC := 1000000000.
-
+	var bestK int
+	fmt.Println("iteration\tcurrent score\tbest score\tbest K")
 	for {
 		clcount := len(s.Clusters)
-		fmt.Println(clcount)
-		quit := s.bestClusterJoin()
+		//fmt.Println(clcount)
+		var quit bool
 		if clcount == 1 {
 			quit = true
+		} else {
+			quit = s.bestClusterJoin()
 		}
 		if quit == true {
+			count++
 			config := s.NewSiteConfig()
 			var keep bool
 			if s.CurrentAIC < bestAIC {
 				bestAIC = s.CurrentAIC
+				bestK = clcount
 				s.CurBestAIC = bestAIC
 				bestClust = s.ClusterString()
 				keep = true
@@ -155,11 +162,13 @@ func (s *HCSearch) PerturbedRun() {
 			if count > s.Gen {
 				break
 			}
-			fmt.Println(bestAIC, bestClust)
-			fmt.Println("Hill climb got stuck. Perturbing the state and trying again to reduce.")
+			//fmt.Println(bestAIC, bestClust)
+			//fmt.Println("Hill climb got stuck. Perturbing the state and trying again to reduce.")
+			fmt.Println(count, s.CurrentAIC, bestAIC, bestK)
 			s.perturbClusters()
+			s.JoinLikes = make(map[int]map[int]float64)
 		}
-		count++
+
 		if count > 10000000000 {
 			fmt.Println("couldn't find clusters to join")
 			os.Exit(0)
@@ -238,7 +247,7 @@ func (s *HCSearch) RefineSavedClusterings() {
 }
 
 func (s *HCSearch) perturbClusters() {
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 10; i++ {
 		for k, v := range s.SiteAssignments {
 			s.siteClusterUpdate(k, v)
 		}
@@ -265,6 +274,7 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
 	bestLL := -1000000000000.
 	var bestClustLab int
 	var bestClust *Cluster
+	nclust := len(s.Clusters)
 	for k, v := range s.Clusters {
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
@@ -276,14 +286,14 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
 			bestClust = v
 		}
 	}
-	if len(siteCluster.Sites) != 1 {
+	if len(siteCluster.Sites) != 1 && nclust < s.K {
 		var sendsites []int
 		sendsites = append(sendsites, site)
 		for _, n := range s.PreorderNodes[1:] {
 			r := rand.Float64()
 			n.LEN = r
 		}
-		GreedyIterateLengthsMissing(s.Tree, sendsites, 50)
+		GreedyIterateLengthsMissing(s.Tree, sendsites, 10)
 		selfLL := SingleSiteLL(s.Tree, site)
 		if selfLL > bestLL {
 			bestLL = selfLL
@@ -300,7 +310,6 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
 			bestClust = selfClust
 		}
 	}
-	//fmt.Println(siteClusterLab, bestClustLab)
 	if bestClustLab != siteClusterLab { //move the site to its new cluster if the best cluster has changed
 		if len(siteCluster.Sites) == 1 { // delete the cluster containing the current site if it is a singleton
 			delete(s.Clusters, siteClusterLab)
@@ -360,11 +369,13 @@ func (s *HCSearch) unjoinedLikeParams(exclude1, exclude2 int) (params, ll float6
 func (s *HCSearch) bestClusterJoin() (quit bool) {
 	blCount := float64(len(s.PreorderNodes)) - 1. //subtract 1 because you don't estimate the root node length
 	bestAIC := 1000000000000.
-	var best1, best2 *Cluster
+	//var best1, best2 *Cluster
 	var bestll float64
 	var bestBranchLengths []float64
+	var bestClusterSites []int
 	var deleteK int
 	var newK int
+	clen := len(s.Clusters)
 	for i, c1 := range s.Clusters {
 		for j, c2 := range s.Clusters {
 			if i >= j {
@@ -383,18 +394,34 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 				r := rand.Float64()
 				n.LEN = r
 			}
-			clen := len(s.Clusters)
-			if clen <= 15 {
-				GreedyIterateLengthsMissing(s.Tree, proposedSites, 100)
-			} else if clen <= 25 && clen > 15 {
-				GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
-			} else if clen > 25 {
-				GreedyIterateLengthsMissing(s.Tree, proposedSites, 10)
+			precalc := true
+			var clustll float64
+			if _, ok := s.JoinLikes[i][j]; !ok {
+				if _, ok := s.JoinLikes[i]; !ok {
+					s.JoinLikes[i] = map[int]float64{}
+				}
+				if _, ok := s.JoinLikes[j][i]; !ok {
+					precalc = false // pairwise calc needs to be done
+				} else {
+					clustll = s.JoinLikes[j][i]
+				}
+			} else {
+				clustll = s.JoinLikes[i][j]
 			}
-			clustll := 0.0
-			for _, site := range proposedSites {
-				cur := SingleSiteLL(s.Tree, site)
-				clustll += cur
+			if precalc == false {
+				if clen <= 15 {
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 100)
+				} else if clen <= 25 && clen > 15 {
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
+				} else if clen > 25 {
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 3)
+				}
+				clustll = 0.0
+				for _, site := range proposedSites {
+					cur := SingleSiteLL(s.Tree, site)
+					clustll += cur
+				}
+				s.JoinLikes[i][j] = clustll
 			}
 			ll += clustll
 			params += blCount
@@ -412,11 +439,15 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 				//fmt.Println(bestAIC)
 				//fmt.Println((((2. * (params * params)) + (2. * params)) / (s.NumTraits - params - 1.)))
 				bestAIC = aic
-				best1 = c1
-				best2 = c2
+				/*
+					best1 = c1
+					best2 = c2
+				*/
 				deleteK = j
+
 				newK = i
 				bestll = clustll
+				bestClusterSites = proposedSites
 				var bl []float64
 				for _, n := range s.PreorderNodes {
 					bl = append(bl, n.LEN)
@@ -425,17 +456,29 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 			}
 		}
 	}
-	fmt.Println(s.CurrentAIC, bestAIC)
+	//fmt.Println(s.CurrentAIC, bestAIC)
 	if bestAIC < s.CurrentAIC { //+10. {
-		for _, site := range best2.Sites {
-			best1.Sites = append(best1.Sites, site)
-			s.SiteAssignments[site] = newK
+		newLab := MaxClustLab(s.Clusters) + 1
+		addClust := new(Cluster)
+		addClust.Sites = bestClusterSites
+		for _, site := range bestClusterSites {
+			s.SiteAssignments[site] = newLab
 		}
-		best1.LogLike = bestll
-		best1.BranchLengths = bestBranchLengths
+		/*
+				for _, site := range best2.Sites {
+					best1.Sites = append(best1.Sites, site)
+					s.SiteAssignments[site] = newK
+				}
 
+			best1.LogLike = bestll
+			best1.BranchLengths = bestBranchLengths
+		*/
+		addClust.LogLike = bestll
+		addClust.BranchLengths = bestBranchLengths
 		s.CurrentAIC = bestAIC
 		delete(s.Clusters, deleteK)
+		delete(s.Clusters, newK)
+		s.Clusters[newLab] = addClust
 		quit = false
 	} else {
 		quit = true
@@ -443,7 +486,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 	return
 }
 
-func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string) *HCSearch {
+func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string, splitgen int) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
 	s.RunName = runName
@@ -457,10 +500,12 @@ func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, run
 		s.randomStartingClusters()
 	}
 	s.PrintFreq = pr
+	s.JoinLikes = make(map[int]map[int]float64)
+	s.SplitGen = splitgen
 	return s
 }
 
-func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, runName string) *HCSearch {
+func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, runName string, splitgen int) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
 	s.RunName = runName
@@ -477,6 +522,8 @@ func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Clust
 	s.SiteAssignments = siteAssign
 	s.NumTraits = math.Log(float64(len(clus))) //* float64(tipcount)
 	s.CurrentAIC = s.calcAIC()
+	s.JoinLikes = make(map[int]map[int]float64)
+	s.SplitGen = splitgen
 	return s
 }
 

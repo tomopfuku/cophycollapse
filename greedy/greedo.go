@@ -4,7 +4,10 @@ import (
 	"cophycollapse"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
+	"os"
+	"runtime/pprof"
 	"time"
 )
 
@@ -25,16 +28,17 @@ func main() {
 	//sampFreqArg := flag.Int("samp", 1, "Frequency with which to sample from the chain")
 	runNameArg := flag.String("o", "cophycollapse", "specify the prefix for outfile names")
 	critArg := flag.Int("c", 0, "Criterion to use for hill climbing:\n0\tAIC\n1\tBIC\n2\tAICc\n")
+	splitGenArg := flag.Int("split", 10, "Number of iterations to run at each splitting step")
 	//threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
 	//workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
 	//clustArg := flag.Float64("a", 1.0, "clumpiness parameter for trait clustering algorithm")
 	flag.Parse()
-	/*f, err := os.Create("profile.prof")
+	f, err := os.Create("profile.prof")
 	if err != nil {
 		log.Fatal(err)
 	}
-	//pprof.StartCPUProfile(f)
-	//defer pprof.StopCPUProfile()*/
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
 	//var ntax,ntraits int
 	nwk := cophycollapse.ReadLine(*treeArg)[0]
 	tree := cophycollapse.ReadTree(nwk)
@@ -64,8 +68,8 @@ func main() {
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 	} else if *searchArg == 1 {
-		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, false, *kArg, treeOutFile)
-		fmt.Println(search.ClusterString())
+		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, false, *kArg, treeOutFile, *splitGenArg)
+		//fmt.Println(search.ClusterString())
 		start := time.Now()
 		search.PerturbedRun()
 		elapsed := time.Since(start)
@@ -77,15 +81,15 @@ func main() {
 		search.Run()
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
-		ghc := cophycollapse.TransferGreedyHC(search.Tree, search.Gen, search.PrintFreq, *critArg, search.Clusters, search.SiteAssignments, treeOutFile)
+		ghc := cophycollapse.TransferGreedyHC(search.Tree, search.Gen, search.PrintFreq, *critArg, search.Clusters, search.SiteAssignments, treeOutFile, *splitGenArg)
 		start = time.Now()
 		ghc.PerturbedRun()
 		elapsed = time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 
 	} else if *searchArg == 3 {
-		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, true, *kArg, treeOutFile)
-		fmt.Println(search.ClusterString())
+		search := cophycollapse.InitGreedyHC(tree, *genArg, *printFreqArg, *critArg, true, *kArg, treeOutFile, *splitGenArg)
+		//fmt.Println(search.ClusterString())
 		start := time.Now()
 		search.PerturbedRun()
 		elapsed := time.Since(start)
