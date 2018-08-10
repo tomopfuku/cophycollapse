@@ -149,6 +149,21 @@ func GreedyIterateLengthsMissing(tree *Node, sites []int, niter int) {
 	}
 }
 
+//IterateLengthsWeighted will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
+func IterateLengthsWeighted(tree *Node, cluster *Cluster, niter int) {
+	AssertUnrootedTree(tree)
+	//nodes := tree.PreorderArray()
+	//InitMissingValues(nodes)
+	rnodes := tree.PreorderArray()
+	for i := 0; i < niter; i++ {
+		CalcExpectedTraits(tree)                                 //calculate Expected trait values
+		calcBMLengthsWeighted(tree, rnodes, cluster.SiteWeights) //maximize likelihood of branch lengths
+	}
+	for _, n := range rnodes {
+		cluster.BranchLengths = append(cluster.BranchLengths, n.LEN) //store the newly calculated branch lengths
+	}
+}
+
 //ClusterMissingTraitsEM will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
 func ClusterMissingTraitsEM(tree *Node, cluster *Cluster, niter int) {
 	AssertUnrootedTree(tree)
@@ -162,6 +177,25 @@ func ClusterMissingTraitsEM(tree *Node, cluster *Cluster, niter int) {
 	for _, n := range rnodes {
 		cluster.BranchLengths = append(cluster.BranchLengths, n.LEN) //store the newly calculated branch lengths
 	}
+}
+
+//calcBMLengthsWeighted will perform a single pass of the branch length ML estimation using only the sites indicated in sites
+func calcBMLengthsWeighted(tree *Node, rnodes []*Node, weights map[int]float64) {
+	lnode := 0
+	for ind, newroot := range rnodes {
+		if len(newroot.CHLD) == 0 {
+			continue
+		} else if newroot != rnodes[0] {
+			tree = newroot.Reroot(rnodes[lnode])
+			lnode = ind
+		}
+		for _, cn := range tree.CHLD {
+			BMPruneRooted(cn)
+		}
+		TritomyWeightedML(tree, weights)
+	}
+	tree = rnodes[0].Reroot(tree)
+	//fmt.Println(tree.Newick(true))
 }
 
 //calcBMLengths will perform a single pass of the branch length ML estimation using only the sites indicated in sites
@@ -634,6 +668,105 @@ func TritomySubML(tree *Node, sites []int) {
 	}
 	if sumV3 <= 0. {
 		sumV3 = 0.0001
+	}
+	tree.CHLD[0].LEN = sumV1
+	tree.CHLD[1].LEN = sumV2
+	tree.CHLD[2].LEN = sumV3
+}
+
+//TritomyWeightedML will calculate the MLEs for the branch lengths of a tifurcating 3-taxon tree
+func TritomyWeightedML(tree *Node, weights map[int]float64) {
+	//ntraits := len(tree.CHLD[0].CONTRT)
+	fntraits := 0.
+	for _, w := range weights {
+		fntraits += w
+	}
+
+	var x1, x2, x3 float64
+	sumV1 := 0.0
+	sumV2 := 0.0
+	sumV3 := 0.0
+	wt := 0.0
+	for i := range tree.CHLD[0].CONTRT {
+		wt = weights[i]
+		if wt == 0.0 {
+			continue
+		}
+		x1 = tree.CHLD[0].CONTRT[i]
+		x2 = tree.CHLD[1].CONTRT[i]
+		x3 = tree.CHLD[2].CONTRT[i]
+
+		sumV1 += ((x1 - x2) * (x1 - x3)) * wt
+		sumV2 += ((x2 - x1) * (x2 - x3)) * wt
+		sumV3 += ((x3 - x1) * (x3 - x2)) * wt
+	}
+	if sumV1 <= 0.0 {
+		sumV1 = 0.000001
+		sumV2 = 0.0
+		sumV3 = 0.0
+		for i := range tree.CHLD[0].CONTRT {
+			wt = weights[i]
+			if wt == 0.0 {
+				continue
+			}
+			x1 = tree.CHLD[0].CONTRT[i]
+			x2 = tree.CHLD[1].CONTRT[i]
+			x3 = tree.CHLD[2].CONTRT[i]
+			sumV2 += (x1 - x2) * (x1 - x2) * wt
+			sumV3 += (x1 - x3) * (x1 - x3) * wt
+		}
+	} else if sumV2 <= 0.0 {
+		sumV1 = 0.0
+		sumV2 = 0.00001
+		sumV3 = 0.0
+		for i := range tree.CHLD[0].CONTRT {
+			wt = weights[i]
+			if wt == 0.0 {
+				continue
+			}
+
+			x1 = tree.CHLD[0].CONTRT[i]
+			x2 = tree.CHLD[1].CONTRT[i]
+			x3 = tree.CHLD[2].CONTRT[i]
+			sumV1 += (x2 - x1) * (x2 - x1) * wt
+			sumV3 += (x2 - x3) * (x2 - x3) * wt
+		}
+	} else if sumV3 <= 0.0 {
+		sumV1 = 0.0
+		sumV2 = 0.0
+		sumV3 = 0.0001
+		for i := range tree.CHLD[0].CONTRT {
+			wt = weights[i]
+			if wt == 0.0 {
+				continue
+			}
+
+			x1 = tree.CHLD[0].CONTRT[i]
+			x2 = tree.CHLD[1].CONTRT[i]
+			x3 = tree.CHLD[2].CONTRT[i]
+			sumV1 += (x3 - x1) * (x3 - x1) * wt
+			sumV2 += (x3 - x2) * (x3 - x2) * wt
+		}
+	}
+	sumV1 = sumV1 / fntraits
+	sumV2 = sumV2 / fntraits
+	sumV3 = sumV3 / fntraits
+	sumV1 = sumV1 - (tree.CHLD[0].PRNLEN - tree.CHLD[0].LEN)
+	sumV2 = sumV2 - (tree.CHLD[1].PRNLEN - tree.CHLD[1].LEN)
+	sumV3 = sumV3 - (tree.CHLD[2].PRNLEN - tree.CHLD[2].LEN)
+	if sumV1 <= 0. {
+		sumV1 = 0.0001
+	}
+	if sumV2 <= 0. {
+		sumV2 = 0.0001
+	}
+	if sumV3 <= 0. {
+		sumV3 = 0.0001
+	}
+	//fmt.Println(tree.CHLD[0].NAME, sumV1, tree.CHLD[1].NAME, sumV2, tree.CHLD[2].NAME, sumV3)
+	if math.IsNaN(sumV1) || math.IsNaN(sumV2) || math.IsNaN(sumV3) {
+		fmt.Println(tree.CHLD[0].NAME, sumV1, tree.CHLD[1].NAME, sumV2, tree.CHLD[2].NAME, sumV3)
+		os.Exit(0)
 	}
 	tree.CHLD[0].LEN = sumV1
 	tree.CHLD[1].LEN = sumV2

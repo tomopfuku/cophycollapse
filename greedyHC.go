@@ -275,17 +275,29 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
 	var bestClustLab int
 	var bestClust *Cluster
 	nclust := len(s.Clusters)
+	//llsum := 0.0
+	//llmap := make(map[int]float64)
 	for k, v := range s.Clusters {
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
 		}
 		curll := SingleSiteLL(s.Tree, site)
+		/*
+			llmap[k] = curll
+			llsum+=curll
+		*/
 		if curll > bestLL {
 			bestLL = curll
 			bestClustLab = k
 			bestClust = v
 		}
 	}
+	/*
+		for k,v := range llmap {
+			fmt.Println(k,v/llsum)
+		}
+		os.Exit(0)
+	*/
 	if len(siteCluster.Sites) != 1 && nclust < s.K {
 		var sendsites []int
 		sendsites = append(sendsites, site)
@@ -414,7 +426,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 				} else if clen <= 25 && clen > 15 {
 					GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
 				} else if clen > 25 {
-					GreedyIterateLengthsMissing(s.Tree, proposedSites, 3)
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 30)
 				}
 				clustll = 0.0
 				for _, site := range proposedSites {
@@ -535,7 +547,7 @@ func (search *HCSearch) startingClusters() {
 	for k := range search.Tree.CONTRT {
 		cur := new(Cluster)
 		cur.Sites = append(cur.Sites, k)
-		ClusterMissingTraitsEM(search.Tree, cur, 10)
+		//ClusterMissingTraitsEM(search.Tree, cur, 10)
 		cur.LogLike = SingleSiteLL(search.Tree, k)
 		clus[lab] = cur
 		siteClust[k] = lab
@@ -552,7 +564,6 @@ func (search *HCSearch) startingClusters() {
 	}
 	search.NumTraits = math.Log(float64(len(clus))) * float64(tipcount)
 	search.CurrentAIC = search.calcAIC()
-
 }
 
 //ClusterString will return a string of the current set of clusters
@@ -588,6 +599,39 @@ func (search *HCSearch) combineAndCalcAIC() {
 	fmt.Println("Single cluster AIC:", search.calcAIC())
 }
 
+func (search *HCSearch) singleStartingCluster() {
+	clus := make(map[int]*Cluster)
+	siteClust := make(map[int]int)
+	var clustLabs []int
+	cur := new(Cluster)
+	clus[0] = cur
+	clustLabs = append(clustLabs, 0)
+	for k := range search.Tree.CONTRT {
+		//cur := clus[0]
+		cur.Sites = append(cur.Sites, k)
+		siteClust[k] = 0
+	}
+	if len(cur.Sites) != 0 {
+		//ClusterMissingTraitsEM(search.Tree, cur, 100)
+		clustll := 0.0
+		for _, site := range cur.Sites {
+			curll := SingleSiteLL(search.Tree, site)
+			clustll += curll
+		}
+		cur.LogLike = clustll
+	}
+	search.Clusters = clus
+	search.SiteAssignments = siteClust
+	tipcount := 0
+	for _, n := range search.PreorderNodes {
+		if len(n.CHLD) == 0 {
+			tipcount++
+		}
+	}
+	search.NumTraits = math.Log(float64(len(clus))) * float64(tipcount)
+	search.CurrentAIC = search.calcAIC()
+}
+
 func (search *HCSearch) randomStartingClusters() {
 	clus := make(map[int]*Cluster)
 	siteClust := make(map[int]int)
@@ -605,7 +649,7 @@ func (search *HCSearch) randomStartingClusters() {
 	}
 	for k, cur := range clus {
 		if len(cur.Sites) != 0 {
-			ClusterMissingTraitsEM(search.Tree, cur, 10)
+			//ClusterMissingTraitsEM(search.Tree, cur, 100)
 			clustll := 0.0
 			for _, site := range cur.Sites {
 				curll := SingleSiteLL(search.Tree, site)

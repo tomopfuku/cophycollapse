@@ -37,14 +37,23 @@ func (s *EMClustSearch) updateClusterBranchLengths() {
 		if len(v.Sites) == 0 {
 			continue
 		}
-		ClusterMissingTraitsEM(s.Tree, v, 10)
+		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
+			n.LEN = v.BranchLengths[i]
+		}
+		//ClusterMissingTraitsEM(s.Tree, v, 100)
+		IterateLengthsWeighted(s.Tree, v, 100)
 	}
 }
 
-func (s *EMClustSearch) updateClusters() {
+func (s *EMClustSearch) updateClusters() (weights map[int]float64) {
 	for k, v := range s.SiteAssignments {
-		s.siteClusterUpdate(k, v)
+		weights = s.siteClusterUpdate(k, v)
+		for l, c := range s.Clusters {
+			c.SiteWeights[k] = weights[l]
+			fmt.Println(k, l, weights[l])
+		}
 	}
+	return
 }
 
 //ClusterString will return a string of the current set of clusters
@@ -66,22 +75,33 @@ func (s *EMClustSearch) ClusterString() string {
 	return buffer.String()
 }
 
-func (s *EMClustSearch) siteClusterUpdate(site int, siteClusterLab int) {
+func (s *EMClustSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[int]float64) {
 	siteCluster := s.Clusters[siteClusterLab]
 	bestLL := -1000000000000.
 	var bestClustLab int
 	var bestClust *Cluster
+	llsum := 0.0
+	llmap := make(map[int]float64)
+	weights = map[int]float64{}
 	for k, v := range s.Clusters {
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
 		}
 		curll := SingleSiteLL(s.Tree, site)
+		llmap[k] = curll
+		llsum += curll
+
 		if curll > bestLL {
 			bestLL = curll
 			bestClustLab = k
 			bestClust = v
 		}
 	}
+	for k, v := range llmap {
+		weights[k] = v / llsum
+		//fmt.Println(k, v/llsum)
+	}
+
 	//fmt.Println(siteClusterLab, bestClustLab)
 	if bestClustLab != siteClusterLab { //move the site to its new cluster if the best cluster has changed
 		//if len(siteCluster.Sites) == 1 { // delete the cluster containing the current site if it is a singleton
@@ -100,6 +120,7 @@ func (s *EMClustSearch) siteClusterUpdate(site int, siteClusterLab int) {
 		bestClust.Sites = append(bestClust.Sites, site)
 		s.SiteAssignments[site] = bestClustLab
 	}
+	return
 }
 
 func InitEMSearch(tree *Node, gen int, k int, pr int) *EMClustSearch {
@@ -140,6 +161,7 @@ func (search *EMClustSearch) startingClusters() {
 		cur := new(Cluster)
 		clus[i] = cur
 		clustLabs = append(clustLabs, i)
+		cur.SiteWeights = map[int]float64{}
 	}
 	for k := range search.Tree.CONTRT {
 		lab := rand.Intn(search.K)
@@ -148,13 +170,16 @@ func (search *EMClustSearch) startingClusters() {
 		siteClust[k] = lab
 	}
 	for _, cur := range clus {
-		if len(cur.Sites) == 0 {
-			for range search.PreorderNodes {
-				cur.BranchLengths = append(cur.BranchLengths, rand.Float64())
-			}
-			continue
+		//if len(cur.Sites) == 0 {
+		for range search.PreorderNodes {
+			cur.BranchLengths = append(cur.BranchLengths, rand.Float64())
 		}
-		ClusterMissingTraitsEM(search.Tree, cur, 10)
+		for i := range search.SiteAssignments {
+			cur.SiteWeights[i] = 0.5
+		}
+		//continue
+		//}
+		//ClusterMissingTraitsEM(search.Tree, cur, 10)
 	}
 	search.Clusters = clus
 	search.SiteAssignments = siteClust

@@ -27,8 +27,15 @@ func (c *SiteConfiguration) CalcClusterSizes() {
 
 func (c *SiteConfiguration) Equals(check *SiteConfiguration) (equal bool) {
 	equal = false
-
-	if math.Abs(c.AIC-check.AIC) > 1.0 {
+	diff := math.Abs(c.AIC - check.AIC)
+	if diff > 0.5 {
+		return
+	} else if diff == 0.0 {
+		equal = true
+		return
+	}
+	if len(c.ClusterTrees) == 1 && len(check.ClusterTrees) == 1 {
+		equal = true
 		return
 	}
 	if len(c.Sites) != len(check.Sites) {
