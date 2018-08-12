@@ -64,7 +64,7 @@ func main() {
 		search := cophycollapse.InitEMSearch(tree, *genArg, *kArg, *printFreqArg)
 		fmt.Println(search.ClusterString())
 		start := time.Now()
-		search.Run()
+		search.RunEM()
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 	} else if *searchArg == 1 {
@@ -78,7 +78,7 @@ func main() {
 		search := cophycollapse.InitEMSearch(tree, *genArg, *kArg, *printFreqArg)
 		fmt.Println(search.ClusterString())
 		start := time.Now()
-		search.Run()
+		search.RunEM()
 		elapsed := time.Since(start)
 		fmt.Println("COMPLETED ", *genArg, "ITERATIONS IN ", elapsed)
 		ghc := cophycollapse.TransferGreedyHC(search.Tree, search.Gen, search.PrintFreq, *critArg, search.Clusters, search.SiteAssignments, treeOutFile, *splitGenArg)

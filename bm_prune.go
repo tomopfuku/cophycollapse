@@ -681,7 +681,6 @@ func TritomyWeightedML(tree *Node, weights map[int]float64) {
 	for _, w := range weights {
 		fntraits += w
 	}
-
 	var x1, x2, x3 float64
 	sumV1 := 0.0
 	sumV2 := 0.0

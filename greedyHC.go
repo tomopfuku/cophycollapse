@@ -55,7 +55,7 @@ func (s *HCSearch) NewSiteConfig() *SiteConfiguration {
 	return config
 }
 
-func (s *HCSearch) Run() {
+func (s *HCSearch) RunSingleHC() {
 	f, err := os.Create(s.RunName)
 	if err != nil {
 		log.Fatal(err)
@@ -145,6 +145,7 @@ func (s *HCSearch) PerturbedRun() {
 		}
 		if quit == true {
 			count++
+			fmt.Println(s.ClusterString())
 			config := s.NewSiteConfig()
 			var keep bool
 			if s.CurrentAIC < bestAIC {
@@ -246,15 +247,61 @@ func (s *HCSearch) RefineSavedClusterings() {
 	s.SavedConfig = kept
 }
 
+func (s *HCSearch) checkAndAddK() {
+	if len(s.Clusters) < s.K {
+		biggest := MaxClustLab(s.Clusters)
+		for {
+			biggest++
+			newC := new(Cluster)
+			s.Clusters[biggest] = newC
+			for range s.PreorderNodes {
+				newC.BranchLengths = append(newC.BranchLengths, rand.Float64())
+			}
+			newC.SiteWeights = map[int]float64{}
+			if len(s.Clusters) == s.K {
+				break
+			}
+		}
+	}
+}
+
+func assignClusterLengths(ns []*Node, c *Cluster) {
+	for i, n := range ns {
+		n.LEN = c.BranchLengths[i]
+	}
+}
+
+func (s *HCSearch) calcClusterSiteWeights() {
+	ll := 0.
+	llsum := 0.
+	cll := make(map[int]float64)
+	for site := range s.SiteAssignments {
+		for lab, c := range s.Clusters {
+			assignClusterLengths(s.PreorderNodes, c)
+			ll = SingleSiteLL(s.Tree, site)
+			llsum += ll
+			cll[lab] = ll
+			//fmt.Println(c.SiteWeights)
+		}
+		for k, v := range cll {
+			s.Clusters[k].SiteWeights[site] = v / llsum
+		}
+	}
+}
+
 func (s *HCSearch) perturbClusters() {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3; i++ {
 		for k, v := range s.SiteAssignments {
-			s.siteClusterUpdate(k, v)
+			s.expandClusters(k, v)
 		}
 		for _, v := range s.Clusters {
 			ClusterMissingTraitsEM(s.Tree, v, 10)
 		}
 	}
+	s.checkAndAddK()
+	s.calcClusterSiteWeights()
+	s.SplitEM()
+	s.removeEmptyK()
 	for _, c := range s.Clusters {
 		if len(c.Sites) == 0 {
 			continue
@@ -269,7 +316,15 @@ func (s *HCSearch) perturbClusters() {
 	s.CurrentAIC = s.calcAIC()
 }
 
-func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
+func (s *HCSearch) removeEmptyK() {
+	for k, v := range s.Clusters {
+		if len(v.Sites) == 0 {
+			delete(s.Clusters, k)
+		}
+	}
+}
+
+func (s *HCSearch) expandClusters(site int, siteClusterLab int) {
 	siteCluster := s.Clusters[siteClusterLab]
 	bestLL := -1000000000000.
 	var bestClustLab int
@@ -312,6 +367,7 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) {
 			newLab := MaxClustLab(s.Clusters) + 1
 			bestClustLab = newLab
 			selfClust := new(Cluster)
+			selfClust.SiteWeights = make(map[int]float64)
 			selfClust.LogLike = selfLL //valid because this is a single site cluster
 			for _, n := range s.PreorderNodes {
 				selfClust.BranchLengths = append(bestClust.BranchLengths, n.LEN)
@@ -347,7 +403,6 @@ func (s *HCSearch) calcAIC() (aic float64) {
 	for _, c := range s.Clusters {
 		params += blCount
 		ll += c.LogLike
-
 	}
 	if s.Criterion == 0 {
 		aic = (2. * params) - (2. * ll)
@@ -426,7 +481,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 				} else if clen <= 25 && clen > 15 {
 					GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
 				} else if clen > 25 {
-					GreedyIterateLengthsMissing(s.Tree, proposedSites, 30)
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
 				}
 				clustll = 0.0
 				for _, site := range proposedSites {
@@ -472,6 +527,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 	if bestAIC < s.CurrentAIC { //+10. {
 		newLab := MaxClustLab(s.Clusters) + 1
 		addClust := new(Cluster)
+		addClust.SiteWeights = make(map[int]float64)
 		addClust.Sites = bestClusterSites
 		for _, site := range bestClusterSites {
 			s.SiteAssignments[site] = newLab
@@ -507,9 +563,9 @@ func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, run
 	s.Criterion = crit
 	s.K = k
 	if rstart == false {
-		s.startingClusters()
+		s.startingClustersAllSeparate()
 	} else if rstart == true {
-		s.randomStartingClusters()
+		s.singleStartingCluster()
 	}
 	s.PrintFreq = pr
 	s.JoinLikes = make(map[int]map[int]float64)
@@ -539,15 +595,15 @@ func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Clust
 	return s
 }
 
-//this gives starting clusters when K is unknown (for basically a prior-free DPP-style mixture model)
-func (search *HCSearch) startingClusters() {
+//this gives starting clusters when K is unknown
+func (search *HCSearch) startingClustersAllSeparate() {
 	clus := make(map[int]*Cluster)
 	lab := 0
 	siteClust := make(map[int]int)
 	for k := range search.Tree.CONTRT {
 		cur := new(Cluster)
 		cur.Sites = append(cur.Sites, k)
-		//ClusterMissingTraitsEM(search.Tree, cur, 10)
+		ClusterMissingTraitsEM(search.Tree, cur, 10)
 		cur.LogLike = SingleSiteLL(search.Tree, k)
 		clus[lab] = cur
 		siteClust[k] = lab
@@ -606,13 +662,14 @@ func (search *HCSearch) singleStartingCluster() {
 	cur := new(Cluster)
 	clus[0] = cur
 	clustLabs = append(clustLabs, 0)
+	cur.SiteWeights = make(map[int]float64)
 	for k := range search.Tree.CONTRT {
 		//cur := clus[0]
 		cur.Sites = append(cur.Sites, k)
 		siteClust[k] = 0
 	}
 	if len(cur.Sites) != 0 {
-		//ClusterMissingTraitsEM(search.Tree, cur, 100)
+		ClusterMissingTraitsEM(search.Tree, cur, 100)
 		clustll := 0.0
 		for _, site := range cur.Sites {
 			curll := SingleSiteLL(search.Tree, site)
@@ -622,6 +679,7 @@ func (search *HCSearch) singleStartingCluster() {
 	}
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
+	search.calcClusterSiteWeights()
 	tipcount := 0
 	for _, n := range search.PreorderNodes {
 		if len(n.CHLD) == 0 {
@@ -640,6 +698,7 @@ func (search *HCSearch) randomStartingClusters() {
 		cur := new(Cluster)
 		clus[i] = cur
 		clustLabs = append(clustLabs, i)
+		cur.SiteWeights = make(map[int]float64)
 	}
 	for k := range search.Tree.CONTRT {
 		lab := rand.Intn(search.K)
@@ -649,7 +708,7 @@ func (search *HCSearch) randomStartingClusters() {
 	}
 	for k, cur := range clus {
 		if len(cur.Sites) != 0 {
-			//ClusterMissingTraitsEM(search.Tree, cur, 100)
+			ClusterMissingTraitsEM(search.Tree, cur, 100)
 			clustll := 0.0
 			for _, site := range cur.Sites {
 				curll := SingleSiteLL(search.Tree, site)
@@ -663,6 +722,7 @@ func (search *HCSearch) randomStartingClusters() {
 
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
+	search.calcClusterSiteWeights()
 	tipcount := 0
 	for _, n := range search.PreorderNodes {
 		if len(n.CHLD) == 0 {

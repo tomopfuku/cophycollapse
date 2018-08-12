@@ -1,13 +1,12 @@
 package cophycollapse
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
-	"strconv"
 )
 
-type EMClustSearch struct {
+/*
+type HCSearch struct {
 	Tree            *Node
 	PreorderNodes   []*Node
 	Clusters        map[int]*Cluster
@@ -20,8 +19,8 @@ type EMClustSearch struct {
 	K               int
 	PrintFreq       int
 }
-
-func (s *EMClustSearch) Run() {
+*/
+func (s *HCSearch) RunEM() {
 	for i := 0; i < s.Gen; i++ {
 		if i%s.PrintFreq == 0 {
 			fmt.Println("ITERATION", i)
@@ -32,7 +31,17 @@ func (s *EMClustSearch) Run() {
 	fmt.Println(len(s.Clusters), s.ClusterString())
 }
 
-func (s *EMClustSearch) updateClusterBranchLengths() {
+func (s *HCSearch) SplitEM() {
+	for i := 0; i < s.SplitGen; i++ {
+		s.updateClusters()
+		s.updateClusterBranchLengths()
+		//fmt.Println(i)
+		//fmt.Println(s.ClusterString())
+	}
+	fmt.Println(len(s.Clusters), s.ClusterString())
+}
+
+func (s *HCSearch) updateClusterBranchLengths() {
 	for _, v := range s.Clusters {
 		if len(v.Sites) == 0 {
 			continue
@@ -41,23 +50,33 @@ func (s *EMClustSearch) updateClusterBranchLengths() {
 			n.LEN = v.BranchLengths[i]
 		}
 		//ClusterMissingTraitsEM(s.Tree, v, 100)
-		IterateLengthsWeighted(s.Tree, v, 100)
+		IterateLengthsWeighted(s.Tree, v, 40)
 	}
 }
 
-func (s *EMClustSearch) updateClusters() (weights map[int]float64) {
+func (s *HCSearch) updateClusters() {
+	var weights map[int]float64
 	for k, v := range s.SiteAssignments {
 		weights = s.siteClusterUpdate(k, v)
 		for l, c := range s.Clusters {
 			c.SiteWeights[k] = weights[l]
-			fmt.Println(k, l, weights[l])
+			//fmt.Println(k, l, weights[l])
 		}
 	}
-	return
 }
 
-//ClusterString will return a string of the current set of clusters
-func (s *EMClustSearch) ClusterString() string {
+func (s *HCSearch) clusterLL() {
+	for _, c := range s.Clusters {
+		curll := 0.0
+		for site := range c.Sites {
+			curll += SingleSiteLL(s.Tree, site)
+		}
+		c.LogLike = curll
+	}
+}
+
+/*/ClusterString will return a string of the current set of clusters
+func (s *HCSearch) ClusterString() string {
 	var buffer bytes.Buffer
 	cSet := s.Clusters
 	for _, like := range cSet {
@@ -74,8 +93,9 @@ func (s *EMClustSearch) ClusterString() string {
 	}
 	return buffer.String()
 }
+*/
 
-func (s *EMClustSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[int]float64) {
+func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[int]float64) {
 	siteCluster := s.Clusters[siteClusterLab]
 	bestLL := -1000000000000.
 	var bestClustLab int
@@ -123,20 +143,20 @@ func (s *EMClustSearch) siteClusterUpdate(site int, siteClusterLab int) (weights
 	return
 }
 
-func InitEMSearch(tree *Node, gen int, k int, pr int) *EMClustSearch {
-	s := new(EMClustSearch)
+func InitEMSearch(tree *Node, gen int, k int, pr int) *HCSearch {
+	s := new(HCSearch)
 	s.Tree = tree
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
 	s.K = k
-	s.startingClusters()
+	s.startingClustersEMOnly()
 	s.PrintFreq = pr
 	return s
 }
 
 /*
 this gives starting clusters when K is unknown (for basically a prior-free DPP-style mixture model)
-func (search *EMClustSearch) startingClusters() {
+func (search *HCSearch) startingClusters() {
 	clus := make(map[int]*Cluster)
 	lab := 0
 	siteClust := make(map[int]int)
@@ -153,7 +173,7 @@ func (search *EMClustSearch) startingClusters() {
 }
 */
 
-func (search *EMClustSearch) startingClusters() {
+func (search *HCSearch) startingClustersEMOnly() {
 	clus := make(map[int]*Cluster)
 	siteClust := make(map[int]int)
 	var clustLabs []int
@@ -165,22 +185,34 @@ func (search *EMClustSearch) startingClusters() {
 	}
 	for k := range search.Tree.CONTRT {
 		lab := rand.Intn(search.K)
+		/*
+			var lab int
+			if k < 50 {
+				lab = 0
+			} else {
+				lab = 1
+			}
+		*/
 		cur := clus[lab]
 		cur.Sites = append(cur.Sites, k)
 		siteClust[k] = lab
 	}
-	for _, cur := range clus {
-		//if len(cur.Sites) == 0 {
-		for range search.PreorderNodes {
-			cur.BranchLengths = append(cur.BranchLengths, rand.Float64())
-		}
-		for i := range search.SiteAssignments {
-			cur.SiteWeights[i] = 0.5
-		}
-		//continue
-		//}
-		//ClusterMissingTraitsEM(search.Tree, cur, 10)
-	}
+	stWt := 1.0 / float64(search.K)
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
+	for _, cur := range search.Clusters {
+		if len(cur.Sites) == 0 {
+			for range search.PreorderNodes {
+				cur.BranchLengths = append(cur.BranchLengths, rand.Float64())
+			}
+			continue
+		}
+
+		for i := range search.SiteAssignments {
+			cur.SiteWeights[i] = stWt
+		}
+		//ClusterMissingTraitsEM(search.Tree, cur, 10)
+		IterateLengthsWeighted(search.Tree, cur, 40)
+	}
+
 }
