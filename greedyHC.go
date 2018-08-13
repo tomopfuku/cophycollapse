@@ -276,6 +276,7 @@ func (s *HCSearch) calcClusterSiteWeights() {
 	llsum := 0.
 	cll := make(map[int]float64)
 	for site := range s.SiteAssignments {
+		llsum = 0.
 		for lab, c := range s.Clusters {
 			assignClusterLengths(s.PreorderNodes, c)
 			ll = SingleSiteLL(s.Tree, site)
@@ -284,20 +285,24 @@ func (s *HCSearch) calcClusterSiteWeights() {
 			//fmt.Println(c.SiteWeights)
 		}
 		for k, v := range cll {
-			s.Clusters[k].SiteWeights[site] = v / llsum
+			if site == 60 {
+				fmt.Println(site, k, v, llsum)
+				s.Clusters[k].SiteWeights[site] = v / llsum
+			}
 		}
 	}
 }
 
-func (s *HCSearch) perturbClusters() {
-	for i := 0; i < 3; i++ {
-		for k, v := range s.SiteAssignments {
-			s.expandClusters(k, v)
-		}
-		for _, v := range s.Clusters {
-			ClusterMissingTraitsEM(s.Tree, v, 10)
-		}
+func (s *HCSearch) perturbAndUpdate(it int) {
+	for i := 0; i < it; i++ {
+		s.perturbSites()
+		s.calcClusterSiteWeights()
+		s.updateClusterBranchLengths()
 	}
+}
+
+func (s *HCSearch) perturbClusters() {
+	s.perturbAndUpdate(3)
 	s.checkAndAddK()
 	s.calcClusterSiteWeights()
 	s.SplitEM()
@@ -324,35 +329,27 @@ func (s *HCSearch) removeEmptyK() {
 	}
 }
 
-func (s *HCSearch) expandClusters(site int, siteClusterLab int) {
+func (s *HCSearch) expandClusters(site int, siteClusterLab int) (weights map[int]float64) {
 	siteCluster := s.Clusters[siteClusterLab]
 	bestLL := -1000000000000.
 	var bestClustLab int
 	var bestClust *Cluster
 	nclust := len(s.Clusters)
-	//llsum := 0.0
-	//llmap := make(map[int]float64)
+	llsum := 0.0
+	llmap := make(map[int]float64)
 	for k, v := range s.Clusters {
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
 		}
 		curll := SingleSiteLL(s.Tree, site)
-		/*
-			llmap[k] = curll
-			llsum+=curll
-		*/
+		llmap[k] = curll
+		llsum += curll
 		if curll > bestLL {
 			bestLL = curll
 			bestClustLab = k
 			bestClust = v
 		}
 	}
-	/*
-		for k,v := range llmap {
-			fmt.Println(k,v/llsum)
-		}
-		os.Exit(0)
-	*/
 	if len(siteCluster.Sites) != 1 && nclust < s.K {
 		var sendsites []int
 		sendsites = append(sendsites, site)
@@ -360,11 +357,14 @@ func (s *HCSearch) expandClusters(site int, siteClusterLab int) {
 			r := rand.Float64()
 			n.LEN = r
 		}
-		GreedyIterateLengthsMissing(s.Tree, sendsites, 10)
+
+		//GreedyIterateLengthsMissing(s.Tree, sendsites, 10)
 		selfLL := SingleSiteLL(s.Tree, site)
 		if selfLL > bestLL {
-			bestLL = selfLL
 			newLab := MaxClustLab(s.Clusters) + 1
+			llmap[newLab] = selfLL
+			llsum += selfLL
+			bestLL = selfLL
 			bestClustLab = newLab
 			selfClust := new(Cluster)
 			selfClust.SiteWeights = make(map[int]float64)
@@ -372,11 +372,15 @@ func (s *HCSearch) expandClusters(site int, siteClusterLab int) {
 			for _, n := range s.PreorderNodes {
 				selfClust.BranchLengths = append(bestClust.BranchLengths, n.LEN)
 			}
-
 			s.Clusters[newLab] = selfClust
 			//fmt.Println(s.Clusters[newLab])
 			bestClust = selfClust
+
 		}
+	}
+	weights = map[int]float64{}
+	for k, v := range llmap {
+		weights[k] = v / llsum
 	}
 	if bestClustLab != siteClusterLab { //move the site to its new cluster if the best cluster has changed
 		if len(siteCluster.Sites) == 1 { // delete the cluster containing the current site if it is a singleton
@@ -394,6 +398,7 @@ func (s *HCSearch) expandClusters(site int, siteClusterLab int) {
 		bestClust.Sites = append(bestClust.Sites, site)
 		s.SiteAssignments[site] = bestClustLab
 	}
+	return
 }
 
 func (s *HCSearch) calcAIC() (aic float64) {

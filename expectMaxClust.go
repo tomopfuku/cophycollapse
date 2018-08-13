@@ -54,6 +54,17 @@ func (s *HCSearch) updateClusterBranchLengths() {
 	}
 }
 
+func (s *HCSearch) perturbSites() {
+	var weights map[int]float64
+	for k, v := range s.SiteAssignments {
+		weights = s.expandClusters(k, v)
+		for l, c := range s.Clusters {
+			c.SiteWeights[k] = weights[l]
+			//fmt.Println(k, l, weights[l])
+		}
+	}
+}
+
 func (s *HCSearch) updateClusters() {
 	var weights map[int]float64
 	for k, v := range s.SiteAssignments {
@@ -149,7 +160,9 @@ func InitEMSearch(tree *Node, gen int, k int, pr int) *HCSearch {
 	s.PreorderNodes = tree.PreorderArray()
 	s.Gen = gen
 	s.K = k
-	s.startingClustersEMOnly()
+	//s.startingClustersEMOnly()
+	s.singleStartingCluster()
+	s.perturbAndUpdate(3)
 	s.PrintFreq = pr
 	return s
 }
