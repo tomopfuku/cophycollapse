@@ -26,22 +26,25 @@ func (s *HCSearch) RunEM() {
 			fmt.Println("ITERATION", i)
 		}
 		s.updateClusters()
-		s.updateClusterBranchLengths()
+		s.updateMixtureBranchLengths()
 	}
 	fmt.Println(len(s.Clusters), s.ClusterString())
 }
 
 func (s *HCSearch) SplitEM() {
-	for i := 0; i < s.SplitGen; i++ {
-		s.updateClusters()
-		s.updateClusterBranchLengths()
-		//fmt.Println(i)
-		//fmt.Println(s.ClusterString())
+	clen := len(s.Clusters)
+	if clen > 1 {
+		for i := 0; i < s.SplitGen; i++ {
+			s.updateClusters()
+			s.updateMixtureBranchLengths()
+			//fmt.Println(i)
+			//fmt.Println(s.ClusterString())
+		}
+		//fmt.Println(clen, s.ClusterString())
 	}
-	fmt.Println(len(s.Clusters), s.ClusterString())
 }
 
-func (s *HCSearch) updateClusterBranchLengths() {
+func (s *HCSearch) updateMixtureBranchLengths() {
 	for _, v := range s.Clusters {
 		if len(v.Sites) == 0 {
 			continue
@@ -51,17 +54,6 @@ func (s *HCSearch) updateClusterBranchLengths() {
 		}
 		//ClusterMissingTraitsEM(s.Tree, v, 100)
 		IterateLengthsWeighted(s.Tree, v, 40)
-	}
-}
-
-func (s *HCSearch) perturbSites() {
-	var weights map[int]float64
-	for k, v := range s.SiteAssignments {
-		weights = s.expandClusters(k, v)
-		for l, c := range s.Clusters {
-			c.SiteWeights[k] = weights[l]
-			//fmt.Println(k, l, weights[l])
-		}
 	}
 }
 
