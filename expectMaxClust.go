@@ -122,15 +122,9 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[
 	}
 	for k, v := range llmap {
 		weights[k] = v / llsum
-		//fmt.Println(k, v/llsum)
 	}
 
-	//fmt.Println(siteClusterLab, bestClustLab)
 	if bestClustLab != siteClusterLab { //move the site to its new cluster if the best cluster has changed
-		//if len(siteCluster.Sites) == 1 { // delete the cluster containing the current site if it is a singleton
-		//delete(s.Clusters, siteClusterLab)
-		//} else { // delete current site from its cluster
-		//if len(siteCluster.Sites) != 1 { // delete the current site from its existing cluster if it shares the cluster with other sites
 		var newSlice []int
 		for _, s := range siteCluster.Sites {
 			if s != site {
@@ -138,8 +132,6 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[
 			}
 		}
 		siteCluster.Sites = newSlice
-		//}
-		//fmt.Println("BEST", bestClust)
 		bestClust.Sites = append(bestClust.Sites, site)
 		s.SiteAssignments[site] = bestClustLab
 	}
