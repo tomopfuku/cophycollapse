@@ -110,7 +110,14 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
 		}
-		curll := SingleSiteLL(s.Tree, site)
+		/*
+			var constrain float64
+			if len(v.Sites) > 0 {
+				constrain = math.Log(float64(len(v.Sites)) / float64(len(s.Tree.CONTRT)))
+			} else {
+				constrain = 0
+			}*/
+		curll := SingleSiteLL(s.Tree, site) // + constrain
 		llmap[k] = curll
 		llsum += curll
 

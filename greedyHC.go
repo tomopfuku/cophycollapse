@@ -434,7 +434,14 @@ func (s *HCSearch) reseatSites(site int, siteClusterLab int) (weights map[int]fl
 	llmap := make(map[int]float64)
 	for k, v := range s.Clusters {
 		assignClusterLengths(s.PreorderNodes, v)
-		curll := SingleSiteLL(s.Tree, site)
+		var constrain float64
+		if len(v.Sites) > 0 {
+			constrain = math.Log(float64(len(v.Sites)) / float64(len(s.Tree.CONTRT)))
+		} else {
+			constrain = 0
+		}
+		curll := SingleSiteLL(s.Tree, site) + constrain
+
 		llmap[k] = curll
 		llsum += curll
 		if curll > bestLL {
