@@ -2,6 +2,7 @@ package cophycollapse
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 )
 
@@ -78,26 +79,6 @@ func (s *HCSearch) clusterLL() {
 	}
 }
 
-/*/ClusterString will return a string of the current set of clusters
-func (s *HCSearch) ClusterString() string {
-	var buffer bytes.Buffer
-	cSet := s.Clusters
-	for _, like := range cSet {
-		buffer.WriteString("(")
-		for ind, site := range like.Sites {
-			cur := strconv.Itoa(site)
-			buffer.WriteString(cur)
-			stop := len(like.Sites) - 1
-			if ind != stop {
-				buffer.WriteString(",")
-			}
-		}
-		buffer.WriteString(");")
-	}
-	return buffer.String()
-}
-*/
-
 func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[int]float64) {
 	siteCluster := s.Clusters[siteClusterLab]
 	bestLL := -1000000000000.
@@ -110,14 +91,9 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
 		}
-		/*
-			var constrain float64
-			if len(v.Sites) > 0 {
-				constrain = math.Log(float64(len(v.Sites)) / float64(len(s.Tree.CONTRT)))
-			} else {
-				constrain = 0
-			}*/
-		curll := SingleSiteLL(s.Tree, site) // + constrain
+		var constrain float64
+		constrain = (math.Log(float64(len(v.Sites))+(s.Alpha/float64(len(s.Clusters)))) / (s.NumPoints + s.Alpha - 1.))
+		curll := SingleSiteLL(s.Tree, site) + constrain
 		llmap[k] = curll
 		llsum += curll
 
@@ -145,7 +121,7 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[
 	return
 }
 
-func InitEMSearch(tree *Node, gen int, k int, pr int) *HCSearch {
+func InitEMSearch(tree *Node, gen int, k int, pr int, alpha float64) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
 	s.PreorderNodes = tree.PreorderArray()
@@ -155,6 +131,8 @@ func InitEMSearch(tree *Node, gen int, k int, pr int) *HCSearch {
 	s.singleStartingCluster()
 	s.perturbAndUpdate(3)
 	s.PrintFreq = pr
+	s.Alpha = alpha
+	s.ExpandPenalty = math.Log(s.Alpha / (s.Alpha + s.NumPoints))
 	return s
 }
 

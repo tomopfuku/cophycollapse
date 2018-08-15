@@ -30,6 +30,9 @@ type HCSearch struct {
 	CurBestAIC      float64
 	JoinLikes       map[int]map[int]float64
 	SplitGen        int
+	Alpha           float64
+	NumPoints       float64
+	ExpandPenalty   float64
 }
 
 func (s *HCSearch) NewSiteConfig() *SiteConfiguration {
@@ -145,9 +148,7 @@ func (s *HCSearch) PerturbedRun() {
 		}
 		if quit == true {
 			count++
-			//s.calcClusterSiteWeights()
-			//s.SplitEM()
-			fmt.Println(s.ClusterString())
+			//fmt.Println(s.ClusterString())
 			config := s.NewSiteConfig()
 			var keep bool
 			if s.CurrentAIC < bestAIC {
@@ -182,7 +183,16 @@ func (s *HCSearch) PerturbedRun() {
 	s.WriteBestClusters()
 	s.WriteClusterTrees()
 	fmt.Println(bestAIC, bestClust)
+}
 
+func (s *HCSearch) classLogLike() {
+	for _, c := range s.Clusters {
+		clustll := 0.0
+		for site := range c.Sites {
+			clustll += SingleSiteLL(s.Tree, site)
+		}
+		c.LogLike = clustll
+	}
 }
 
 func (s *HCSearch) WriteBestClusters() {
@@ -281,7 +291,15 @@ func (s *HCSearch) calcClusterSiteWeights() {
 		llsum = 0.
 		for lab, c := range s.Clusters {
 			assignClusterLengths(s.PreorderNodes, c)
-			ll = SingleSiteLL(s.Tree, site)
+			var constrain float64
+			if len(c.Sites) > 0 {
+				//constrain = math.Log(float64(len(v.Sites)) / (float64(len(s.Tree.CONTRT)))+0.5)
+				constrain = math.Log(float64(len(c.Sites)) / (s.NumPoints + s.Alpha))
+			} else {
+				//constrain = 0
+				constrain = s.ExpandPenalty
+			}
+			ll = SingleSiteLL(s.Tree, site) + constrain
 			llsum += ll
 			cll[lab] = ll
 			//fmt.Println(c.SiteWeights)
@@ -318,7 +336,7 @@ func (s *HCSearch) perturbAndUpdate(it int) {
 func (s *HCSearch) perturbClusters() {
 	s.perturbAndUpdate(3)
 	s.checkAndAddK()
-	s.calcClusterSiteWeights()
+	//s.calcClusterSiteWeights()
 	s.SplitEM()
 	s.removeEmptyK()
 	for _, c := range s.Clusters {
@@ -344,13 +362,13 @@ func (s *HCSearch) removeEmptyK() {
 }
 
 func (s *HCSearch) perturbSites() {
-	for {
+	/*for {
 		nclust := len(s.Clusters)
 		if nclust == s.K {
 			break
 		}
 		s.searchExpand()
-	}
+	}*/
 	var weights map[int]float64
 	for k, v := range s.SiteAssignments {
 		weights = s.reseatSites(k, v)
@@ -436,9 +454,9 @@ func (s *HCSearch) reseatSites(site int, siteClusterLab int) (weights map[int]fl
 		assignClusterLengths(s.PreorderNodes, v)
 		var constrain float64
 		if len(v.Sites) > 0 {
-			constrain = math.Log(float64(len(v.Sites)) / float64(len(s.Tree.CONTRT)))
+			constrain = math.Log(float64(len(v.Sites)) / (s.NumPoints + s.Alpha))
 		} else {
-			constrain = 0
+			constrain = s.ExpandPenalty
 		}
 		curll := SingleSiteLL(s.Tree, site) + constrain
 
@@ -457,7 +475,7 @@ func (s *HCSearch) reseatSites(site int, siteClusterLab int) (weights map[int]fl
 		sendsites = append(sendsites, site)
 		s.randomizeBranchLengths()
 		GreedyIterateLengthsMissing(s.Tree, sendsites, 20)
-		selfLL := SingleSiteLL(s.Tree, site)
+		selfLL := SingleSiteLL(s.Tree, site) + s.ExpandPenalty
 		if selfLL > bestLL {
 			newLab := MaxClustLab(s.Clusters) + 1
 			llmap[newLab] = selfLL
@@ -656,7 +674,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 	return
 }
 
-func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string, splitgen int) *HCSearch {
+func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string, splitgen int, alpha float64) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
 	s.RunName = runName
@@ -672,10 +690,13 @@ func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, run
 	s.PrintFreq = pr
 	s.JoinLikes = make(map[int]map[int]float64)
 	s.SplitGen = splitgen
+	s.NumPoints = float64(len(s.Tree.CONTRT))
+	s.Alpha = alpha
+	s.ExpandPenalty = math.Log(s.Alpha / (s.Alpha + s.NumPoints))
 	return s
 }
 
-func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, runName string, splitgen int) *HCSearch {
+func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Cluster, siteAssign map[int]int, runName string, splitgen int, alpha float64) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
 	s.RunName = runName
@@ -694,6 +715,9 @@ func TransferGreedyHC(tree *Node, gen int, pr int, crit int, clus map[int]*Clust
 	s.CurrentAIC = s.calcAIC()
 	s.JoinLikes = make(map[int]map[int]float64)
 	s.SplitGen = splitgen
+	s.NumPoints = float64(len(s.Tree.CONTRT))
+	s.Alpha = alpha
+	s.ExpandPenalty = math.Log(s.Alpha / (s.Alpha + s.NumPoints))
 	return s
 }
 
@@ -781,7 +805,7 @@ func (search *HCSearch) singleStartingCluster() {
 	}
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
-	search.calcClusterSiteWeights()
+	//search.calcClusterSiteWeights()
 	tipcount := 0
 	for _, n := range search.PreorderNodes {
 		if len(n.CHLD) == 0 {
@@ -790,6 +814,7 @@ func (search *HCSearch) singleStartingCluster() {
 	}
 	search.NumTraits = math.Log(float64(len(clus))) * float64(tipcount)
 	search.CurrentAIC = search.calcAIC()
+
 }
 
 func (search *HCSearch) randomStartingClusters() {
@@ -824,7 +849,7 @@ func (search *HCSearch) randomStartingClusters() {
 
 	search.Clusters = clus
 	search.SiteAssignments = siteClust
-	search.calcClusterSiteWeights()
+	//search.calcClusterSiteWeights()
 	tipcount := 0
 	for _, n := range search.PreorderNodes {
 		if len(n.CHLD) == 0 {
