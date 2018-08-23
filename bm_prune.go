@@ -13,6 +13,31 @@ func postorder(curnode *Node) {
 	fmt.Println(curnode.NAME, curnode.CONTRT)
 }
 
+//BMParallelPruneRooted will prune BM branch lens and PICs down to a rooted node
+//root node should be a real (ie. bifurcating) root
+// added Aug 2018. will need later.
+func BMParallelPruneRooted(n *Node, lab int) {
+	for _, chld := range n.CHLD {
+		BMParallelPruneRooted(chld, lab)
+	}
+	n.PARTPRNLEN[lab] = n.CLUSTLEN[lab]
+	nchld := len(n.CHLD)
+	if nchld != 0 { //&& n.MRK == false {
+		var tempChar float64
+		if nchld != 2 {
+			fmt.Println("This BM pruning algorithm should only be perfomed on fully bifurcating trees/subtrees! Check for multifurcations and singletons.")
+		}
+		c0 := n.CHLD[0]
+		c1 := n.CHLD[1]
+		bot := ((1.0 / c0.PARTPRNLEN[lab]) + (1.0 / c1.PARTPRNLEN[lab]))
+		n.PARTPRNLEN[lab] += 1.0 / bot
+		for i := range n.CHLD[0].CONTRT {
+			tempChar = (((1 / c0.PARTPRNLEN[lab]) * c1.CONTRT[i]) + ((1 / c1.PARTPRNLEN[lab]) * c0.CONTRT[i])) / bot
+			n.CONTRT[i] = tempChar
+		}
+	}
+}
+
 //BMPruneRooted will prune BM branch lens and PICs down to a rooted node
 //root node should be a real (ie. bifurcating) root
 func BMPruneRooted(n *Node) {
@@ -159,9 +184,11 @@ func IterateLengthsWeighted(tree *Node, cluster *Cluster, niter int) {
 		CalcExpectedTraits(tree)                                 //calculate Expected trait values
 		calcBMLengthsWeighted(tree, rnodes, cluster.SiteWeights) //maximize likelihood of branch lengths
 	}
+	var newlen []float64
 	for _, n := range rnodes {
-		cluster.BranchLengths = append(cluster.BranchLengths, n.LEN) //store the newly calculated branch lengths
+		newlen = append(newlen, n.LEN) //store the newly calculated branch lengths
 	}
+	cluster.BranchLengths = newlen
 }
 
 //ClusterMissingTraitsEM will iteratively calculate the ML branch lengths for a particular topology and cluster when doing the greedy site clustering procedure.
@@ -174,9 +201,11 @@ func ClusterMissingTraitsEM(tree *Node, cluster *Cluster, niter int) {
 		CalcExpectedTraitsSub(tree, cluster.Sites)         //calculate Expected trait values
 		calcBMLengthsSubSites(tree, rnodes, cluster.Sites) //maximize likelihood of branch lengths
 	}
+	var newlen []float64
 	for _, n := range rnodes {
-		cluster.BranchLengths = append(cluster.BranchLengths, n.LEN) //store the newly calculated branch lengths
+		newlen = append(newlen, n.LEN) //store the newly calculated branch lengths
 	}
+	cluster.BranchLengths = newlen
 }
 
 //calcBMLengthsWeighted will perform a single pass of the branch length ML estimation using only the sites indicated in sites
@@ -447,6 +476,40 @@ func siteTreeLikeParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, weights []
 		tmpll = tmpll * weights[site]
 		results <- tmpll
 	}
+}
+
+func subSiteTreeLikeParallel(tree, ch1, ch2, ch3 *Node, startFresh bool, jobs <-chan int, results chan<- float64) {
+	for site := range jobs {
+		tmpll := 0.
+		calcRootedSiteLLParallel(ch1, &tmpll, startFresh, site)
+		calcRootedSiteLLParallel(ch2, &tmpll, startFresh, site)
+		calcRootedSiteLLParallel(ch3, &tmpll, startFresh, site)
+		tmpll += calcUnrootedSiteLLParallel(tree, site)
+		results <- tmpll
+	}
+}
+
+//SubUnrootedLogLikeParallel will calculate the log-likelihood of an unrooted tree, while assuming that some sites have missing data. This can be used to calculate the likelihoods of trees that have complete trait sampling, but it will be slower than CalcRootedLogLike.
+func SubUnrootedLogLikeParallel(tree *Node, sites []int, workers int) (sitelikes float64) {
+	nsites := len(tree.CHLD[0].CONTRT)
+	ch1 := tree.CHLD[0] //.PostorderArray()
+	ch2 := tree.CHLD[1] //.PostorderArray()
+	ch3 := tree.CHLD[2] //.PostorderArray()
+	jobs := make(chan int, nsites)
+	results := make(chan float64, nsites)
+	for w := 0; w < workers; w++ {
+		go subSiteTreeLikeParallel(tree, ch1, ch2, ch3, true, jobs, results)
+	}
+	//for site := 0; site < nsites; site++ {
+	for _, site := range sites {
+		jobs <- site
+	}
+	close(jobs)
+
+	for range sites {
+		sitelikes += <-results
+	}
+	return
 }
 
 //WeightedUnrootedLogLikeParallel will calculate the log-likelihood of an unrooted tree, while assuming that some sites have missing data. This can be used to calculate the likelihoods of trees that have complete trait sampling, but it will be slower than CalcRootedLogLike.

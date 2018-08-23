@@ -50,11 +50,8 @@ func (s *HCSearch) updateMixtureBranchLengths() {
 		if len(v.Sites) == 0 {
 			continue
 		}
-		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
-			n.LEN = v.BranchLengths[i]
-		}
-		//ClusterMissingTraitsEM(s.Tree, v, 100)
-		IterateLengthsWeighted(s.Tree, v, 40)
+		assignClusterLengths(s.PreorderNodes, v)
+		IterateLengthsWeighted(s.Tree, v, 10)
 	}
 }
 
@@ -93,6 +90,7 @@ func (s *HCSearch) siteClusterUpdate(site int, siteClusterLab int) (weights map[
 		}
 		var constrain float64
 		constrain = (math.Log(float64(len(v.Sites))+(s.Alpha/float64(len(s.Clusters)))) / (s.NumPoints + s.Alpha - 1.))
+		//constrain = 0
 		curll := SingleSiteLL(s.Tree, site) + constrain
 		llmap[k] = curll
 		llsum += curll

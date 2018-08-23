@@ -30,7 +30,7 @@ func (c *SiteConfiguration) Equals(check *SiteConfiguration) (equal bool) {
 	diff := math.Abs(c.AIC - check.AIC)
 	if diff > 0.5 {
 		return
-	} else if diff == 0.0 {
+	} else if diff < 0.01 {
 		equal = true
 		return
 	}

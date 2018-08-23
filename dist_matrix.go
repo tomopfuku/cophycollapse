@@ -2,6 +2,8 @@ package cophycollapse
 
 import (
 	"math"
+	"strconv"
+	"strings"
 )
 
 //DistanceMatrix will store a continuous character matrix converted into a pairwise distance matrix for each site
@@ -52,6 +54,57 @@ func DM(nodes []*Node) *DistanceMatrix { //map[int][]float64 {
 	return dm
 }
 */
+
+//SubDM will return the variance-covariance matrix calculated from a tree with branch lengths
+func SubDM(nodes []*Node, clus *Cluster) map[string][]float64 { //map[int][]float64 {
+	var tips []*Node
+	for _, n := range nodes {
+		if len(n.CHLD) == 0 {
+			tips = append(tips, n)
+		}
+	}
+	dm := map[string][]float64{}
+	for i, n1 := range tips {
+		var dd []float64
+		for j, n2 := range tips {
+			dist := 0.
+			if i != j {
+				for _, t := range clus.Sites {
+					dist += math.Sqrt(math.Pow(n1.CONTRT[t]-n2.CONTRT[t], 2))
+				}
+				dist = dist / float64(len(clus.Sites))
+
+			}
+			dd = append(dd, dist)
+			//fmt.Println(i, j, n1.NAME, n2.NAME, dist)
+		}
+		dm[n1.NAME] = dd
+	}
+	return dm
+}
+
+func DMtoPhylip(dm map[string][]float64, nodes []*Node) (lines []string) {
+	lines = append(lines, strconv.Itoa(len(dm)))
+	var tips []*Node
+	for _, n := range nodes {
+		if len(n.CHLD) == 0 {
+			tips = append(tips, n)
+		}
+	}
+	for _, n := range tips {
+		sp := n.NAME
+		cur := ""
+		cur += sp + "\t"
+		var strslc []string
+		for _, i := range dm[sp] {
+			con := strconv.FormatFloat(i, 'f', 6, 64)
+			strslc = append(strslc, con)
+		}
+		cur += strings.Join(strslc, "\t")
+		lines = append(lines, cur)
+	}
+	return
+}
 
 //DM will return the variance-covariance matrix calculated from a tree with branch lengths
 func DM(nodes []*Node) *DistanceMatrix { //map[int][]float64 {

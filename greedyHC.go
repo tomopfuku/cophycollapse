@@ -33,6 +33,7 @@ type HCSearch struct {
 	Alpha           float64
 	NumPoints       float64
 	ExpandPenalty   float64
+	MinK            int
 }
 
 func (s *HCSearch) NewSiteConfig() *SiteConfiguration {
@@ -125,8 +126,9 @@ func (s *HCSearch) CheckCluster(checkConfig *SiteConfiguration) (keep bool) {
 		seen := checkConfig.Equals(c)
 		if seen == true {
 			keep = false
+			return
 		}
-		return
+
 	}
 	return
 }
@@ -141,38 +143,53 @@ func (s *HCSearch) PerturbedRun() {
 		clcount := len(s.Clusters)
 		//fmt.Println(clcount)
 		var quit bool
-		if clcount == 1 {
+		if clcount == s.MinK {
 			quit = true
 		} else {
 			quit = s.bestClusterJoin()
 		}
 		if quit == true {
 			count++
+			/*
+				for _, c := range s.Clusters {
+					fmt.Println("BEFORE", c.LogLike)
+				}
+				fmt.Println("AIC BEFORE", s.CurrentAIC)
+				s.classLogLike()
+				for _, c := range s.Clusters {
+					fmt.Println("AFTER", c.LogLike)
+				}
+				s.CurrentAIC = s.calcAIC()
+				fmt.Println("AIC AFTER", s.CurrentAIC)
+			*/
 			//fmt.Println(s.ClusterString())
-			config := s.NewSiteConfig()
-			var keep bool
-			if s.CurrentAIC < bestAIC {
-				bestAIC = s.CurrentAIC
-				bestK = clcount
-				s.CurBestAIC = bestAIC
-				bestClust = s.ClusterString()
-				keep = true
-			} else {
-				keep = s.CheckCluster(config)
-			}
-			if keep == true {
-				s.SavedConfig = append(s.SavedConfig, config)
+			if clcount >= s.MinK {
+				config := s.NewSiteConfig()
+
+				var keep bool
+				if s.CurrentAIC < bestAIC {
+					bestAIC = s.CurrentAIC
+					bestK = clcount
+					s.CurBestAIC = bestAIC
+					bestClust = s.ClusterString()
+					keep = true
+				} else {
+					keep = s.CheckCluster(config)
+				}
+				if keep == true {
+					s.SavedConfig = append(s.SavedConfig, config)
+				}
 			}
 			if count > s.Gen {
 				break
 			}
 			//fmt.Println(bestAIC, bestClust)
 			//fmt.Println("Hill climb got stuck. Perturbing the state and trying again to reduce.")
+
 			fmt.Println(count, s.CurrentAIC, bestAIC, bestK)
 			s.perturbClusters()
 			s.JoinLikes = make(map[int]map[int]float64)
 		}
-
 		if count > 10000000000 {
 			fmt.Println("couldn't find clusters to join")
 			os.Exit(0)
@@ -185,14 +202,17 @@ func (s *HCSearch) PerturbedRun() {
 	fmt.Println(bestAIC, bestClust)
 }
 
-func (s *HCSearch) classLogLike() {
+func (s *HCSearch) classLogLike() (err bool) {
 	for _, c := range s.Clusters {
-		clustll := 0.0
-		for site := range c.Sites {
-			clustll += SingleSiteLL(s.Tree, site)
+		if len(c.BranchLengths) != len(s.PreorderNodes) {
+			err = true
+			return
 		}
-		c.LogLike = clustll
+		assignClusterLengths(s.PreorderNodes, c)
+		c.CalcLL(s.Tree)
 	}
+	err = false
+	return
 }
 
 func (s *HCSearch) WriteBestClusters() {
@@ -318,7 +338,7 @@ func (s *HCSearch) updateClassificationBranchLengths() {
 		for i, n := range s.PreorderNodes { //assign current cluster's branch lengths
 			n.LEN = v.BranchLengths[i]
 		}
-		ClusterMissingTraitsEM(s.Tree, v, 40)
+		ClusterMissingTraitsEM(s.Tree, v, 10)
 		//IterateLengthsWeighted(s.Tree, v, 40)
 	}
 }
@@ -339,16 +359,10 @@ func (s *HCSearch) perturbClusters() {
 	//s.calcClusterSiteWeights()
 	s.SplitEM()
 	s.removeEmptyK()
-	for _, c := range s.Clusters {
-		if len(c.Sites) == 0 {
-			continue
-		}
-		clustll := 0.0
-		for _, site := range c.Sites {
-			cur := SingleSiteLL(s.Tree, site)
-			clustll += cur
-		}
-		c.LogLike = clustll
+	err := s.classLogLike()
+	if err == true {
+		fmt.Println("There was a problem dealing with the branch length clusters encountered in perturbClusters()")
+		os.Exit(1)
 	}
 	s.CurrentAIC = s.calcAIC()
 }
@@ -469,12 +483,12 @@ func (s *HCSearch) reseatSites(site int, siteClusterLab int) (weights map[int]fl
 			bestClust = v
 		}
 	}
-
+	//newself := false
 	if len(siteCluster.Sites) != 1 && nclust < s.K {
 		var sendsites []int
 		sendsites = append(sendsites, site)
 		s.randomizeBranchLengths()
-		GreedyIterateLengthsMissing(s.Tree, sendsites, 20)
+		GreedyIterateLengthsMissing(s.Tree, sendsites, 10)
 		selfLL := SingleSiteLL(s.Tree, site) + s.ExpandPenalty
 		if selfLL > bestLL {
 			newLab := MaxClustLab(s.Clusters) + 1
@@ -491,6 +505,7 @@ func (s *HCSearch) reseatSites(site int, siteClusterLab int) (weights map[int]fl
 			s.Clusters[newLab] = selfClust
 			//fmt.Println(s.Clusters[newLab])
 			bestClust = selfClust
+			//newself = true
 		}
 	}
 	weights = map[int]float64{}
@@ -512,6 +527,10 @@ func (s *HCSearch) reseatSites(site int, siteClusterLab int) (weights map[int]fl
 		//fmt.Println("BEST", bestClust)
 		bestClust.Sites = append(bestClust.Sites, site)
 		s.SiteAssignments[site] = bestClustLab
+		//if newself == false {
+		//	assignClusterLengths(s.PreorderNodes, bestClust)
+		//	bestClust.CalcLL(s.Tree)
+		//}
 	}
 	return
 }
@@ -542,14 +561,11 @@ func (s *HCSearch) unjoinedLikeParams(exclude1, exclude2 int) (params, ll float6
 	blCount := float64(len(s.PreorderNodes)) - 1. //subtract 1 because you don't estimate the root node length
 	ll = 0.
 	for i, c := range s.Clusters {
-		if i == exclude1 || i == exclude2 {
-			continue
+		if i != exclude1 && i != exclude2 {
+			params += blCount
+			ll += c.LogLike
 		}
-		params += blCount
-		ll += c.LogLike
 	}
-	//fmt.Println(ll)
-	//aic = (2. * params) - (2. * ll)
 	return
 }
 
@@ -577,10 +593,6 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 			}
 			params, ll := s.unjoinedLikeParams(i, j)
 			//fmt.Println(params, len(s.Clusters), len(s.PreorderNodes)-1)
-			for _, n := range s.PreorderNodes[1:] {
-				r := rand.Float64()
-				n.LEN = r
-			}
 			precalc := true
 			var clustll float64
 			if _, ok := s.JoinLikes[i][j]; !ok {
@@ -588,6 +600,7 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 					s.JoinLikes[i] = map[int]float64{}
 				}
 				if _, ok := s.JoinLikes[j][i]; !ok {
+					s.JoinLikes[j] = map[int]float64{}
 					precalc = false // pairwise calc needs to be done
 				} else {
 					clustll = s.JoinLikes[j][i]
@@ -596,18 +609,18 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 				clustll = s.JoinLikes[i][j]
 			}
 			if precalc == false {
+				for _, n := range s.PreorderNodes[1:] {
+					r := rand.Float64()
+					n.LEN = r
+				}
 				if clen <= 15 {
-					GreedyIterateLengthsMissing(s.Tree, proposedSites, 100)
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 40)
 				} else if clen <= 25 && clen > 15 {
-					GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 20)
 				} else if clen > 25 {
-					GreedyIterateLengthsMissing(s.Tree, proposedSites, 60)
+					GreedyIterateLengthsMissing(s.Tree, proposedSites, 10)
 				}
-				clustll = 0.0
-				for _, site := range proposedSites {
-					cur := SingleSiteLL(s.Tree, site)
-					clustll += cur
-				}
+				clustll = SubUnrootedLogLikeParallel(s.Tree, proposedSites, 4)
 				s.JoinLikes[i][j] = clustll
 			}
 			ll += clustll
@@ -643,7 +656,8 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 			}
 		}
 	}
-	//fmt.Println(s.CurrentAIC, bestAIC)
+	//oldst := s.ClusterString()
+	//oldaic := s.CurrentAIC
 	if bestAIC < s.CurrentAIC { //+10. {
 		newLab := MaxClustLab(s.Clusters) + 1
 		addClust := new(Cluster)
@@ -671,10 +685,25 @@ func (s *HCSearch) bestClusterJoin() (quit bool) {
 	} else {
 		quit = true
 	}
+
+	/*
+		bestll = 0.0
+		for _, c := range s.Clusters {
+			bestll += c.LogLike
+		}
+			fmt.Println("1", bestll)
+			s.classLogLike()
+			bestll = 0.0
+			for _, c := range s.Clusters {
+				bestll += c.LogLike
+			}
+
+			fmt.Println("2", bestll)
+	*/
 	return
 }
 
-func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string, splitgen int, alpha float64) *HCSearch {
+func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, runName string, splitgen int, alpha float64, minK int) *HCSearch {
 	s := new(HCSearch)
 	s.Tree = tree
 	s.RunName = runName
@@ -693,6 +722,7 @@ func InitGreedyHC(tree *Node, gen int, pr int, crit int, rstart bool, k int, run
 	s.NumPoints = float64(len(s.Tree.CONTRT))
 	s.Alpha = alpha
 	s.ExpandPenalty = math.Log(s.Alpha / (s.Alpha + s.NumPoints))
+	s.MinK = minK
 	return s
 }
 

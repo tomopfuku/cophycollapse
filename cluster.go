@@ -6,3 +6,7 @@ type Cluster struct {
 	LogLike       float64
 	SiteWeights   map[int]float64 // this will store the probability that each site in the MATRIX belongs here.
 }
+
+func (c *Cluster) CalcLL(tree *Node) {
+	c.LogLike = SubUnrootedLogLikeParallel(tree, c.Sites, 6)
+}
