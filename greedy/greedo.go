@@ -30,7 +30,7 @@ func main() {
 	kArg := flag.Int("K", 2, "maximum number of clusters")
 	minKArg := flag.Int("minK", 1, "minimum number of clusters")
 	printFreqArg := flag.Int("pr", 100, "Frequency with which to print to the screen")
-	searchArg := flag.Int("f", 3, "0\tOptimize branch lengths for a user-specified clustering\n1\tOutput distance matrices calculated for each cluster provided by the -start argument\n3\tPerform cluster analysis")
+	searchArg := flag.Int("f", 3, "0\tOptimize branch lengths for a user-specified clustering\n1\tOutput distance matrices calculated for each cluster provided by the -start argument\n2\tCalculate the log-likelihood of the dataset on a particular topology\n3\tPerform cluster analysis")
 	//sampFreqArg := flag.Int("samp", 1, "Frequency with which to sample from the chain")
 	runNameArg := flag.String("o", "cophycollapse", "specify the prefix for outfile names")
 	critArg := flag.Int("c", 0, "Criterion to use for hill climbing:\n0\tAIC\n1\tBIC\n2\tAICc\n")
@@ -76,30 +76,46 @@ func main() {
 			fmt.Println("You need to specify a cluster input file to run this option")
 			os.Exit(1)
 		}
-		f, err := os.Create(*runNameArg + "_TREES")
+		clusters := cophycollapse.ReadMCLoutput(*mclArg)
+		nodes := tree.PreorderArray()
+		clmap, err := os.Create("cluster_key_dist")
 		if err != nil {
 			log.Fatal(err)
 		}
-		w := bufio.NewWriter(f)
-		clusters := cophycollapse.ReadMCLoutput(*mclArg)
-		nodes := tree.PreorderArray()
-		for _, c := range clusters {
+		w1 := bufio.NewWriter(clmap)
+		for lab, c := range clusters {
+			f, err := os.Create(strconv.Itoa(lab) + ".bl.tre")
+			if err != nil {
+				log.Fatal(err)
+			}
+			w := bufio.NewWriter(f)
+
 			for _, n := range nodes[1:] {
 				r := rand.Float64()
 				n.LEN = r
 			}
 			cophycollapse.ClusterMissingTraitsEM(tree, c, 100)
-			sites := ""
-			for _, site := range c.Sites {
-				sites += strconv.Itoa(site) + "\t"
+			//sites := ""
+			//for _, site := range c.Sites {
+			//	sites += strconv.Itoa(site) + "\t"
+			//}
+			fmt.Fprint(w, tree.Newick(true)+";")
+			err = w.Flush()
+			if err != nil {
+				log.Fatal(err)
 			}
-			fmt.Fprint(w, sites+"\n"+tree.Newick(true)+"\n")
+			f.Close()
+			var strsites []string
+			for _, site := range c.Sites {
+				strsites = append(strsites, strconv.Itoa(site))
+			}
+			fmt.Fprint(w1, "CLUSTER"+strconv.Itoa(lab)+"\t"+strings.Join(strsites, "\t")+"\n")
 		}
-		err = w.Flush()
+		err = w1.Flush()
 		if err != nil {
 			log.Fatal(err)
 		}
-		f.Close()
+		clmap.Close()
 	} else if *searchArg == 1 {
 		if *mclArg == "" {
 			fmt.Println("You need to specify a cluster input file to run this option")
@@ -108,13 +124,13 @@ func main() {
 
 		clusters := cophycollapse.ReadMCLoutput(*mclArg)
 		nodes := tree.PreorderArray()
-		clmap, err := os.Create("cluster_key")
+		clmap, err := os.Create("cluster_key_dist")
 		if err != nil {
 			log.Fatal(err)
 		}
 		w1 := bufio.NewWriter(clmap)
-		for i, c := range clusters {
-			f, err := os.Create(strconv.Itoa(i) + ".phy")
+		for lab, c := range clusters {
+			f, err := os.Create(strconv.Itoa(lab) + ".dist.phy")
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -128,10 +144,10 @@ func main() {
 			}
 			f.Close()
 			var strsites []string
-			for _, i := range c.Sites {
-				strsites = append(strsites, strconv.Itoa(i))
+			for _, site := range c.Sites {
+				strsites = append(strsites, strconv.Itoa(site))
 			}
-			fmt.Fprint(w1, "CLUSTER"+strconv.Itoa(i)+"\t"+strings.Join(strsites, "\t")+"\n")
+			fmt.Fprint(w1, "CLUSTER"+strconv.Itoa(lab)+"\t"+strings.Join(strsites, "\t")+"\n")
 		}
 		err = w1.Flush()
 		if err != nil {
