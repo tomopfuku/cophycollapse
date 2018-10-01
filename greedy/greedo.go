@@ -35,24 +35,38 @@ func main() {
 	runNameArg := flag.String("o", "cophycollapse", "specify the prefix for outfile names")
 	critArg := flag.Int("c", 0, "Criterion to use for hill climbing:\n0\tAIC\n1\tBIC\n2\tAICc\n")
 	splitGenArg := flag.Int("split", 10, "Number of iterations to run at each splitting step")
+	profileArg := flag.Bool("prof", false, "indicate whether to run the go profiler (for development)")
 	//threadArg := flag.Int("T", 1, "maximum number of cores to use during run")
 	//workersArg := flag.Int("W", 4, "Number of Go workers to use for LL calculation concurrency")
 	clustArg := flag.Float64("a", 1.0, "concentration parameter for new cluster penalty")
 	flag.Parse()
-	f, err := os.Create("profile.prof")
-	if err != nil {
-		log.Fatal(err)
+
+	if *profileArg == true {
+		f, err := os.Create("profile.prof")
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
 	//var ntax,ntraits int
 	runtime.GOMAXPROCS(2)
 	nwk := cophycollapse.ReadLine(*treeArg)[0]
 	tree := cophycollapse.ReadTree(nwk)
-	traits, ntax, ntraits := cophycollapse.ReadContinuous(*traitArg)
-	fmt.Println("SUCCESSFULLY READ IN ALIGNMENT CONTAINING ", ntax, "TAXA")
+	traits, _, ntraits := cophycollapse.ReadContinuous(*traitArg)
 	cophycollapse.MapContinuous(tree, traits, ntraits)
 	rand.Seed(time.Now().UTC().UnixNano())
+	if *searchArg == 2 {
+		cophycollapse.InitMissingValues(tree.PreorderArray())
+		cophycollapse.MissingTraitsEM(tree, 100)
+		LL := 0.0
+		for site := range tree.CONTRT {
+			LL += cophycollapse.SingleSiteLL(tree, site)
+		}
+		fmt.Println(LL)
+		fmt.Println(tree.Newick(true) + ";")
+		os.Exit(0)
+	}
 	for _, n := range tree.PreorderArray()[1:] {
 		r := rand.Float64()
 		n.LEN = r
@@ -134,10 +148,21 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+			f1, err := os.Create(strconv.Itoa(lab) + ".phy")
+			if err != nil {
+				log.Fatal(err)
+			}
+			w1 := bufio.NewWriter(f1)
 			w := bufio.NewWriter(f)
 			dm := cophycollapse.SubDM(nodes, c)
 			out := cophycollapse.DMtoPhylip(dm, nodes)
 			fmt.Fprint(w, strings.Join(out, "\n"))
+			fmt.Fprint(w1, c.WriteClusterPhylip(nodes))
+			err = w1.Flush()
+			if err != nil {
+				log.Fatal(err)
+			}
+			f1.Close()
 			err = w.Flush()
 			if err != nil {
 				log.Fatal(err)
