@@ -22,7 +22,12 @@ func (c *Cluster) WriteClusterPhylip(nodes []*Node) string {
 		if n.NAME != "" && len(n.CHLD) == 0 {
 			var s []string
 			for _, tr := range c.Sites {
-				con := strconv.FormatFloat(n.CONTRT[tr], 'f', 6, 64)
+				var con string
+				if n.MIS[tr] != true {
+					con = strconv.FormatFloat(n.CONTRT[tr], 'f', 6, 64)
+				} else {
+					con = "?"
+				}
 				s = append(s, con)
 			}
 			seqs[n.NAME] = s
