@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"runtime"
@@ -179,5 +180,46 @@ func main() {
 			log.Fatal(err)
 		}
 		clmap.Close()
+	} else if *searchArg == 4 {
+		if *mclArg == "" {
+			fmt.Println("You need to specify a cluster input file to run this option")
+			os.Exit(1)
+		}
+		clusters := cophycollapse.ReadMCLoutput(*mclArg)
+		nodes := tree.PreorderArray()
+		clustSiteLikes := make(map[int][]float64)
+		f, err := os.Create(*runNameArg + ".tab")
+		if err != nil {
+			log.Fatal(err)
+		}
+		w := bufio.NewWriter(f)
+		for lab, c := range clusters {
+			for _, n := range nodes[1:] {
+				r := rand.Float64()
+				n.LEN = r
+			}
+			cophycollapse.ClusterMissingTraitsEM(tree, c, 10)
+			sitelikes := cophycollapse.SitewiseLogLike(tree)
+			clustSiteLikes[lab] = sitelikes
+		}
+		for lab, c := range clusters {
+			for _, site := range c.Sites {
+				assignLL := clustSiteLikes[lab][site]
+				totalDens := math.Exp(assignLL)
+				for kk, likes := range clustSiteLikes {
+					if kk != lab {
+						curlike := likes[site]
+						totalDens += math.Exp(curlike)
+					}
+				}
+				fmt.Println(strconv.FormatFloat(math.Exp(assignLL)/totalDens, 'f', -1, 64))
+				fmt.Fprintln(w, strconv.FormatFloat(math.Exp(assignLL)/totalDens, 'f', -1, 64))
+			}
+		}
+		err = w.Flush()
+		if err != nil {
+			log.Fatal(err)
+		}
+		f.Close()
 	}
 }
